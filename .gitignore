@@ -1,1 +1,3 @@
 .vscode
+prompt*
+src/__pycache__/

@@ -1,7 +1,7 @@
 # src/schema_manager.py
 import json
 from pathlib import Path
-from config import SourceConfig
+from src.config import SourceConfig
 from crawl4ai import JsonCssExtractionStrategy, LLMConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
