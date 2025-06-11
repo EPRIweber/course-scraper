@@ -7,9 +7,10 @@ class SourceConfig(BaseModel):
     name: str
     root_url: HttpUrl
     schema_url: HttpUrl
-    include_external: bool
-    crawl_depth: int = 5
-    page_timeout_ms: int = 5000
+    include_external: bool = None
+    crawl_depth: int = None
+    page_timeout_ms: int = None
+    word_count_min: int = None
 
     class Config:
         extra = 'forbid'

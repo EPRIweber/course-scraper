@@ -12,6 +12,9 @@ class LocalFileStorage:
         out = self.base_dir / source_name
         out.mkdir(exist_ok=True)
         return out
+    
+    def get_urls(self, source_name: str) -> List[str]:
+        
 
     def save_urls(self, source_name: str, urls: List[str]) -> None:
         d = self._ensure_dir(source_name)

@@ -74,4 +74,4 @@ def get_or_generate(
             path.write_text(json.dumps(schema, indent=2))
         else:
             raise ValueError(f"Failed to generate schema for {source.name}.")
-    return json.load(path)
+    return json.loads(path.read_text())

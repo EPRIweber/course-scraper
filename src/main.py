@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.config import config      # your AppConfig instance
 from src.crawler import crawl_and_collect_urls
+from src.prefilter import prefilter_urls
 from src.schema_manager import get_or_generate
 from src.scraper import scrape_with_schema
 from src.storage import LocalFileStorage
@@ -29,8 +30,12 @@ async def process_source(source):
     schema = get_or_generate(source)
     logger.info(f"[{name}] Loaded schema with baseSelector={schema['baseSelector']}")
 
-    # 3) Scrape each URL
-    records = await scrape_with_schema(urls, schema)
+    # 3) Prefilter out 404s
+    good_urls = await prefilter_urls(urls, max_concurrency=50, timeout=1.0)
+    logger.info(f"[{source.name}] {len(good_urls)}/{len(urls)} URLs passed HTTP check")
+
+    # 4) Scrape each URL
+    records = await scrape_with_schema(good_urls, schema)
     storage.save_data(name, records)
     logger.info(f"[{name}] Extracted {len(records)} course records")
 
