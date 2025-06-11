@@ -4,3 +4,13 @@ sources:
   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
   crawl_depth: 3
   include_external: false
+- name: pennsylvania_state_university
+  root_url: https://bulletins.psu.edu/university-course-descriptions/
+  schema_url: https://bulletins.psu.edu/university-course-descriptions/undergraduate/acctg/
+  crawl_depth: 3
+  include_external: false
+- name: california_institute_of_technology
+  root_url: https://catalog.caltech.edu/current/2024-25/
+  schema_url: https://catalog.caltech.edu/current/2024-25/department/Ae/
+  crawl_depth: 1
+  include_external: false

@@ -1,0 +1,21 @@
+{
+  "name": "Course Block",
+  "baseSelector": ".course-description2",
+  "fields": [
+    {
+      "name": "course_code",
+      "selector": ".course-description2__label",
+      "type": "text"
+    },
+    {
+      "name": "course_title",
+      "selector": ".course-description2__title",
+      "type": "text"
+    },
+    {
+      "name": "course_description",
+      "selector": ".course-description2__description",
+      "type": "text"
+    }
+  ]
+}

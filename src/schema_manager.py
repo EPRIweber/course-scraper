@@ -71,6 +71,7 @@ def get_or_generate(
     if not path.exists():
         schema = generate_schema_from_llm(source.schema_url, path)
         if schema:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(schema, indent=2))
         else:
             raise ValueError(f"Failed to generate schema for {source.name}.")

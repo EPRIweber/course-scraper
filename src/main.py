@@ -23,7 +23,7 @@ async def process_source(source):
 
     # 1) Crawl & collect URLs
     urls = storage.get_urls(name)
-    if not urls:
+    if not urls or len(urls) == 0:
         logger.info(f"[{name}] No cached URLs found, starting crawl")
         urls = await crawl_and_collect_urls(source)
         storage.save_urls(name, urls)
@@ -33,21 +33,28 @@ async def process_source(source):
 
     # 2) Get or generate schema
     schema = storage.get_schema(name)
-    if not schema:
+    if not schema or not schema.get("baseSelector"):
         logger.info(f"[{name}] No cached schema found, generating new one")
-        schema = await get_or_generate(source)
+        schema = get_or_generate(source)
         storage.save_schema(name, schema)
     else:
         logger.info(f"[{name}] Loaded cached schema with baseSelector={schema['baseSelector']}")
 
-    # 3) Prefilter out 404s
-    good_urls = await prefilter_urls(urls, max_concurrency=50, timeout=1.0)
-    logger.info(f"[{source.name}] {len(good_urls)}/{len(urls)} URLs passed HTTP check")
+    # 3) Scrape each URL
+    records = storage.get_data(name)
+    if not records or len(records) == 0:
+        logger.info(f"[{name}] No cached records found, starting scrape")
+        # Optionally prefilter URLs before scraping
+        urls = await prefilter_urls(urls, max_concurrency=20, timeout=2.0)
+        storage.save_urls(name, urls)  # Save filtered URLs back to cache
+        logger.info(f"[{name}] Prefiltered to {len(urls)} valid URLs")
 
-    # 4) Scrape each URL
-    records = await scrape_with_schema(good_urls, schema)
-    storage.save_data(name, records)
-    logger.info(f"[{name}] Extracted {len(records)} course records")
+        # Now scrape with the schema
+        records = await scrape_with_schema(urls, schema, max_concurrency=5)
+        storage.save_data(name, records)
+        logger.info(f"[{name}] Extracted {len(records)} course records")
+    else:
+        logger.info(f"[{name}] Loaded {len(records)} cached course records")
 
 async def main():
     tasks = [process_source(src) for src in config.sources]

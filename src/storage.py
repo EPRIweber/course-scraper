@@ -20,13 +20,13 @@ class LocalFileStorage:
         try:
             with open(d / "urls.json", "r") as f:
                 return json.load(f)
-        except FileNotFoundError:
+        except:
             return []
 
     def save_urls(self, source_name: str, urls: List[str]) -> None:
         d = self._ensure_dir(source_name)
         with open(d / "urls.json", "w") as f:
-            json.dump(urls, f, indent=2)
+            json.dump(list(urls), f, indent=2)
 
     def save_schema(self, source_name: str, schema: Dict[str, Any]) -> None:
         # if you ever want to override cache on disk
@@ -47,7 +47,7 @@ class LocalFileStorage:
     def save_data(self, source_name: str, data: List[Dict[str, Any]]) -> None:
         d = self._ensure_dir(source_name)
         with open(d / "courses.json", "w") as f:
-            json.dump(data, f, indent=2)
+            json.dump(list(data), f, indent=2)
 
     def get_data(self, source_name: str) -> List[Dict[str, Any]]:
         d = self.base_dir / source_name

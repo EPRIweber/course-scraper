@@ -30,31 +30,26 @@ async def scrape_with_schema(
         cache_mode=CacheMode.BYPASS,
         scraping_strategy=LXMLWebScrapingStrategy(),
         extraction_strategy=extraction_strategy,
-        # if your version of crawl4ai supports a concurrency setting here:
-        max_concurrency=max_concurrency
     )
 
     all_records: List[Dict[str, Any]] = []
 
     # 2) Fire off all URLs in parallel
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        # arun_many will handle batching under the hood
         results = await crawler.arun_many(
             urls=urls,
             config=run_cfg,
             max_concurrency=max_concurrency
         )
-
+    
     # 3) Parse out each page's JSON payload
     for page_result in results:
-        raw = page_result.extracted_content  # this is the JSON string
+        raw = page_result.extracted_content
         try:
             items = json.loads(raw)
         except json.JSONDecodeError:
-            # skip pages that didn’t yield valid JSON
             continue
 
-        # annotate and collect
         source_url = getattr(page_result, "url", None) or getattr(page_result, "request_url", None)
         for item in items:
             item["_source_url"] = source_url
