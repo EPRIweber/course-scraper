@@ -14,7 +14,14 @@ class LocalFileStorage:
         return out
     
     def get_urls(self, source_name: str) -> List[str]:
-        
+        d = self.base_dir / source_name
+        if not d.exists():
+            return []
+        try:
+            with open(d / "urls.json", "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return []
 
     def save_urls(self, source_name: str, urls: List[str]) -> None:
         d = self._ensure_dir(source_name)
@@ -27,7 +34,27 @@ class LocalFileStorage:
         with open(d / "schema.json", "w") as f:
             json.dump(schema, f, indent=2)
 
+    def get_schema(self, source_name: str) -> Dict[str, Any]:
+        d = self.base_dir / source_name
+        if not d.exists():
+            return {}
+        try:
+            with open(d / "schema.json", "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return {}
+
     def save_data(self, source_name: str, data: List[Dict[str, Any]]) -> None:
         d = self._ensure_dir(source_name)
         with open(d / "courses.json", "w") as f:
             json.dump(data, f, indent=2)
+
+    def get_data(self, source_name: str) -> List[Dict[str, Any]]:
+        d = self.base_dir / source_name
+        if not d.exists():
+            return []
+        try:
+            with open(d / "courses.json", "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
+            return []

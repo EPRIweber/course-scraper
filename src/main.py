@@ -22,13 +22,23 @@ async def process_source(source):
     storage = LocalFileStorage(base_dir=Path("data"))
 
     # 1) Crawl & collect URLs
-    urls = await crawl_and_collect_urls(source)
-    storage.save_urls(name, urls)
-    logger.info(f"[{name}] Collected {len(urls)} URLs")
+    urls = storage.get_urls(name)
+    if not urls:
+        logger.info(f"[{name}] No cached URLs found, starting crawl")
+        urls = await crawl_and_collect_urls(source)
+        storage.save_urls(name, urls)
+        logger.info(f"[{name}] Collected {len(urls)} URLs")
+    else:
+        logger.info(f"[{name}] Loaded {len(urls)} cached URLs")
 
     # 2) Get or generate schema
-    schema = get_or_generate(source)
-    logger.info(f"[{name}] Loaded schema with baseSelector={schema['baseSelector']}")
+    schema = storage.get_schema(name)
+    if not schema:
+        logger.info(f"[{name}] No cached schema found, generating new one")
+        schema = await get_or_generate(source)
+        storage.save_schema(name, schema)
+    else:
+        logger.info(f"[{name}] Loaded cached schema with baseSelector={schema['baseSelector']}")
 
     # 3) Prefilter out 404s
     good_urls = await prefilter_urls(urls, max_concurrency=50, timeout=1.0)
