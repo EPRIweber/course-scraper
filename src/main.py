@@ -1,0 +1,64 @@
+# src/main.py
+import asyncio
+import logging
+from pathlib import Path
+
+from src.config import config      # your AppConfig instance
+from src.crawler import crawl_and_collect_urls
+from src.prefilter import prefilter_urls
+from src.schema_manager import get_or_generate
+from src.scraper import scrape_with_schema
+from src.storage import LocalFileStorage
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+async def process_source(source):
+    name = source.name
+    logger.info(f"=== STARTING: {name} ===")
+    storage = LocalFileStorage(base_dir=Path("data"))
+
+    # 1) Crawl & collect URLs
+    urls = storage.get_urls(name)
+    if not urls or len(urls) == 0:
+        logger.info(f"[{name}] No cached URLs found, starting crawl")
+        urls = await crawl_and_collect_urls(source)
+        storage.save_urls(name, urls)
+        logger.info(f"[{name}] Collected {len(urls)} URLs")
+    else:
+        logger.info(f"[{name}] Loaded {len(urls)} cached URLs")
+
+    # 2) Get or generate schema
+    schema = storage.get_schema(name)
+    if not schema or not schema.get("baseSelector"):
+        logger.info(f"[{name}] No cached schema found, generating new one")
+        schema = get_or_generate(source)
+        storage.save_schema(name, schema)
+    else:
+        logger.info(f"[{name}] Loaded cached schema with baseSelector={schema['baseSelector']}")
+
+    # 3) Scrape each URL
+    records = storage.get_data(name)
+    if not records or len(records) == 0:
+        logger.info(f"[{name}] No cached records found, starting scrape")
+        # Optionally prefilter URLs before scraping
+        urls = await prefilter_urls(urls, max_concurrency=20, timeout=2.0)
+        storage.save_urls(name, urls)  # Save filtered URLs back to cache
+        logger.info(f"[{name}] Prefiltered to {len(urls)} valid URLs")
+
+        # Now scrape with the schema
+        records = await scrape_with_schema(urls, schema, max_concurrency=5)
+        storage.save_data(name, records)
+        logger.info(f"[{name}] Extracted {len(records)} course records")
+    else:
+        logger.info(f"[{name}] Loaded {len(records)} cached course records")
+
+async def main():
+    tasks = [process_source(src) for src in config.sources]
+    await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
+    asyncio.run(main())
