@@ -29,14 +29,14 @@ async def process_source(source):
     logger.info(f"=== STARTING: {name} ===")
 
     # 1) Crawl & collect URLs
-    urls = storage.get_urls(name)
+    urls = await storage.get_urls(name)
     if not urls or len(urls) == 0:
         logger.info(f"[{name}] No schema in storage, generating new one")
         urls = await crawl_and_collect_urls(source)
         logger.info(f"[{name}] Collected {len(urls)} URLs")
         urls = await prefilter_urls(urls, max_concurrency=20, timeout=2.0)
         logger.info(f"[{name}] Prefiltered to {len(urls)} valid URLs")
-        storage.save_urls(name, urls)
+        await storage.save_urls(name, urls)
     else:
         logger.info(f"[{name}] Loaded {len(urls)} URLs from storage")
     if not urls:
@@ -44,21 +44,21 @@ async def process_source(source):
         return
 
     # 2) Get or generate schema
-    schema = storage.get_schema(name)
+    schema = await storage.get_schema(name)
     if not schema or not schema.get("baseSelector"):
         logger.info(f"[{name}] No cached schema found, generating new one")
         schema = generate_schema(source)
-        storage.save_schema(name, schema)
+        await storage.save_schema(name, schema)
         logger.info(f"[{ name}] Saved new schema")
     else:
         logger.info(f"[{name}] Loaded cached schema with baseSelector={schema['baseSelector']}")
 
     # 3) Scrape each URL
-    records = storage.get_data(name)
+    records = await storage.get_data(name)
     if not records or len(records) == 0:
         logger.info(f"[{name}] No cached records found, starting scrape")
         records = await scrape_with_schema(urls, schema, source)
-        storage.save_data(name, records)
+        await storage.save_data(name, records)
         logger.info(f"[{name}] Extracted {len(records)} course records")
     else:
         logger.info(f"[{name}] Loaded {len(records)} cached course records")
