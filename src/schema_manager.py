@@ -1,5 +1,6 @@
 # src/schema_manager.py
 import json
+import logging
 from pathlib import Path
 from src.config import SourceConfig
 from crawl4ai import JsonCssExtractionStrategy, LLMConfig
@@ -13,22 +14,22 @@ DEFAULT_QUERY="""
 Generate a JSON schema (not the data!) using valid CSS selectors that will be used to select distinct course blocks from the given HTML.
 
 Requirements:
-- **Output must be valid JSON only**, following exactly the structure below.
-- **Mandatory fields** (every course block will ALWAYS have these):
-  - `course_title`
-  - `course_description`
-- **Optional field** (include only if it can be separated via their own CSS selector):
-  - `course_code`
+- Output must be **valid JSON only** (no comments, no trailing commas).
+- **Only** these keys are allowed at the top level: `"name"`, `"baseSelector"`, `"fields"`.
+- **fields** are stored as an array with each field having the keys `"name"`, `"selector"`, and `"type"` with possible additional keys depending on type (i.e. attribute selectors for meta-data).
+- Every course block will **ALWAYS** have the fields `"course_title"` and `"course_description"`
+- A course block **MAY** contain `"course_code"`, but should only be included if it can be cleanly selected via its own CSS selector.
+- The fields you may use are limited to exactly these **three** mentioned above.
 
-**Schema must be structured like this**:
+**Exact JSON shape** (course_code included only if present and seperable):
 
 {
   "name": "Course Block",
   "baseSelector": "<CSS selector, e.g. div.courseblock>",
   "fields": [
-    { "name": "course_title",       "selector": "<CSS selector>", "type": "text" },
-    { "name": "course_description", "selector": "<CSS selector>", "type": "text" }
-    // course_code included if present and seperable
+    { "name": "course_title",       "selector": "<CSS selector>", "type": "<text or attribute>" },
+    { "name": "course_description", "selector": "<CSS selector>", "type": "<text or attribute>" },
+    { "name": "course_code",        "selector": "<CSS selector>", "type": "<text or attribute>" }
   ]
 }
 """
@@ -64,8 +65,16 @@ def generate_schema_from_llm(
     
     return schema
 
-def generate_schema(
+async def generate_schema(
     source: SourceConfig,
 ) -> dict:
-    schema = generate_schema_from_llm(source.schema_url, query=source.query)
-    return json.loads(schema)
+    log = logging.getLogger(__name__)
+    raw = generate_schema_from_llm(source.schema_url)
+    if isinstance(raw, str):
+        schema = json.loads(raw)
+    elif isinstance(raw, dict):
+        schema = raw
+    else:
+        raise TypeError(f"Unexpected schema type: {type(raw)}")
+    log.info(f"Generated schema for {source.name!r}:\n{schema}")
+    return schema

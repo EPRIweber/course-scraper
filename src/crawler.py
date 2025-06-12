@@ -88,7 +88,7 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
         root_url=source.root_url,
         max_crawl_depth=source.crawl_depth,
         include_external_links=source.include_external,
-        concurrency=source.crawl_depth * 5  # heuristic for parallelism
+        concurrency=source.max_concurrency
     )
     return sorted(urls)
 
@@ -133,7 +133,7 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
 #     root_url: Union[str, object],
 #     max_crawl_depth: int = 5,
 #     include_external_links: bool = False,
-#     page_timeout_ms: int = 5000,
+#     page_timeout_s: int = 5000,
 #     word_count_min: int = 10
 # ) -> Set[str]:
 #     root = str(root_url)
@@ -158,7 +158,7 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
 #     run_cfg = CrawlerRunConfig(
 #         cache_mode=CacheMode.BYPASS,
 #         stream=True,
-#         page_timeout=page_timeout_ms,
+#         page_timeout=page_timeout_s,
 #         word_count_threshold=word_count_min,
 #         deep_crawl_strategy=strategy,
 #     )
@@ -187,7 +187,7 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
 #         root_url=source.root_url,
 #         max_crawl_depth=source.crawl_depth,
 #         include_external_links=source.include_external,
-#         page_timeout_ms=source.page_timeout_ms,
+#         page_timeout_s=source.page_timeout_s,
 #         word_count_min=10
 #     )
 #     return urls
