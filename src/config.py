@@ -11,6 +11,8 @@ class SourceConfig(BaseModel):
     crawl_depth: int = None
     page_timeout_ms: int = None
     word_count_min: int = None
+    query: str = None
+    max_concurrency: int = 5
 
     class Config:
         extra = 'forbid'

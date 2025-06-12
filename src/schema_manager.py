@@ -9,7 +9,7 @@ import requests, os, json
 from pathlib import Path
 
 
-query="""
+DEFAULT_QUERY="""
 Generate a JSON schema (not the data!) using valid CSS selectors that will be used to select distinct course blocks from the given HTML.
 
 Requirements:
@@ -35,7 +35,7 @@ Requirements:
 
 def generate_schema_from_llm(
     url: str,
-    path: Path
+    query=DEFAULT_QUERY
 ) -> str:
     page = requests.get(url).text
     soup = BeautifulSoup(page, "lxml")
@@ -64,15 +64,8 @@ def generate_schema_from_llm(
     
     return schema
 
-def get_or_generate(
-    source: SourceConfig
+def generate_schema(
+    source: SourceConfig,
 ) -> dict:
-    path = Path("schemas")/f"{source.name}_course_schema.json"
-    if not path.exists():
-        schema = generate_schema_from_llm(source.schema_url, path)
-        if schema:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(schema, indent=2))
-        else:
-            raise ValueError(f"Failed to generate schema for {source.name}.")
-    return json.loads(path.read_text())
+    schema = generate_schema_from_llm(source.schema_url, query=source.query)
+    return json.loads(schema)

@@ -15,7 +15,7 @@ from crawl4ai import (
 async def scrape_with_schema(
     urls: List[str],
     schema: Dict[str, Any],
-    max_concurrency: int = 5
+    source
 ) -> List[Dict[str, Any]]:
     """
     Apply the JSON-CSS schema to each URL in parallel using arun_many.
@@ -39,7 +39,7 @@ async def scrape_with_schema(
         results = await crawler.arun_many(
             urls=urls,
             config=run_cfg,
-            max_concurrency=max_concurrency
+            max_concurrency=source.max_concurrency
         )
     
     # 3) Parse out each page's JSON payload
