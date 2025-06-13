@@ -39,8 +39,9 @@ async def prefilter_urls(
     urls: List[str],
     source: SourceConfig
 ) -> List[str]:
+    concurrency = source.max_concurrency or (source.crawl_depth * 5)
     return await filter_urls(
         urls=urls,
-        max_concurrency=source.max_concurrency,
+        max_concurrency=concurrency,
         timeout=source.page_timeout_s
     )
