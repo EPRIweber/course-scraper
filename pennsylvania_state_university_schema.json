@@ -1,0 +1,21 @@
+{
+  "baseSelector": "div.courseblock",
+  "fields": [
+    {
+      "selector": "div.course_codetitle",
+      "name": "course_title",
+      "type": "text"
+    },
+    {
+      "selector": "div.courseblockdesc p",
+      "name": "course_description",
+      "type": "text"
+    },
+    {
+      "selector": "div.course_code span:first-child",
+      "name": "course_code",
+      "type": "text"
+    }
+  ],
+  "name": "Course Block"
+}

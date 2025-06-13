@@ -1,5 +1,6 @@
 # src/main.py
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -64,8 +65,21 @@ async def process_source(source: SourceConfig):
         logger.info(f"[{name}] Loaded {len(records)} records from storage")
 
 async def main():
-    tasks = [process_source(src) for src in config.sources]
-    await asyncio.gather(*tasks, return_exceptions=False)  # Set return_exceptions=True to return errors instead of failing
+    # tasks = [process_source(src) for src in config.sources]
+    # await asyncio.gather(*tasks, return_exceptions=False)  # Set return_exceptions=True to return errors instead of failing
+
+
+
+    # for source in config.sources:
+    #     item: SourceConfig = source
+    #     schema = await storage.get_schema(item.name)
+    #     with open(f"{item.name}_schema.json", "w") as f:
+    #         f.write(json.dumps(schema, indent=2))
+
+    test: SourceConfig = config.sources[0]
+    schema = await generate_schema(test)
+    print(json.dumps(schema, indent=2))
+
 
 if __name__ == "__main__":
     asyncio.run(main())
