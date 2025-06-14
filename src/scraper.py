@@ -1,6 +1,5 @@
 # src/scraper.py
 import json
-import logging
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -13,12 +12,10 @@ from crawl4ai import (
     LXMLWebScrapingStrategy,
 )
 
-from src.config import SourceConfig
-
 async def scrape_with_schema(
     urls: List[str],
     schema: Dict[str, Any],
-    max_concurrency: int = 10,
+    max_concurrency: int = 5
 ) -> List[Dict[str, Any]]:
     """
     Apply the JSON-CSS schema to each URL in parallel using arun_many.
@@ -56,36 +53,6 @@ async def scrape_with_schema(
         source_url = getattr(page_result, "url", None) or getattr(page_result, "request_url", None)
         for item in items:
             item["_source_url"] = source_url
-            if "course_code" in item and isinstance(item["course_code"], list) and item["course_code"]:
-                str_codes: list[str] = []
-                raw_codes = item.get("course_code")
-                for code in raw_codes:
-                    if isinstance(code, dict):
-                        txt = str(code.get("text", "")).strip()
-                    else:
-                        txt = str(code).strip()
-                    if txt:
-                        str_codes.append(txt)
-                if str_codes:
-                    unique = sorted(set(str_codes))
-                    norm = "_".join(unique)
-                    item["course_code"] = norm
-                    log = logging.getLogger(__name__)
-                    log.debug(f"Codes {raw_codes!r} → {norm!r}")
-                else:
-                    item.pop("course_code", None)
-
             all_records.append(item)
 
     return all_records
-
-async def scrape_urls(
-    urls: List[str],
-    schema: Dict[str, Any],
-    source: SourceConfig
-) -> List[Dict[str, Any]]:
-    return await scrape_with_schema(
-        urls=urls,
-        schema=schema,
-        max_concurrency=source.max_concurrency
-    )
