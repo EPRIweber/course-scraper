@@ -9,8 +9,10 @@ class SourceConfig(BaseModel):
     schema_url: HttpUrl
     include_external: bool = None
     crawl_depth: int = None
-    page_timeout_ms: int = None
+    page_timeout_s: int = None
     word_count_min: int = None
+    query: str = None
+    max_concurrency: int = None
 
     class Config:
         extra = 'forbid'
