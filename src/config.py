@@ -7,12 +7,12 @@ class SourceConfig(BaseModel):
     name: str
     root_url: HttpUrl
     schema_url: HttpUrl
-    include_external: bool = None
-    crawl_depth: int = None
-    page_timeout_s: int = None
-    word_count_min: int = None
-    query: str = None
-    max_concurrency: int = None
+    include_external: bool = None # type: ignore
+    crawl_depth: int = None # type: ignore
+    page_timeout_s: int = None # type: ignore
+    word_count_min: int = None # type: ignore
+    query: str = None # type: ignore
+    max_concurrency: int = None # type: ignore
 
     class Config:
         extra = 'forbid'

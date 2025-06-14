@@ -46,7 +46,7 @@ async def scrape_with_schema(
         )
     
     # 3) Parse out each page's JSON payload
-    for page_result in results:
+    for page_result in results: # type: ignore
         raw = page_result.extracted_content
         try:
             items = json.loads(raw)

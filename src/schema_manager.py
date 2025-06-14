@@ -2,6 +2,8 @@
 import json
 import logging
 from pathlib import Path
+
+from pydantic import HttpUrl
 from src.config import SourceConfig
 from crawl4ai import JsonCssExtractionStrategy, LLMConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
@@ -414,140 +416,140 @@ LLAMA="meta/llama-3.2-90b-vision-instruct"
 URL="http://epr-ai-lno-p01.epri.com:8000/v1/chat/completions"
 
 
-def generate_schema_from_llm(
-        url: str,
-        query: str = DEFAULT_QUERY,
-) -> str:
-    # 1) Download and prune HTML
-    page = requests.get(url, timeout=10).text
-    soup = BeautifulSoup(page, "lxml")
-    snippet = soup.encode_contents().decode() if soup else page
-    chunks = PruningContentFilter(threshold=0.5).filter_content(snippet)
-    html_for_schema = "\n".join(chunks)
-
-    # 2) Build messages
-
-    system_message = {
-            "role": "system", 
-            "content": f"""You specialize in generating special JSON schemas for web scraping. This schema uses CSS or XPATH selectors to present a repetitive pattern in crawled HTML, such as a product in a product list or a search result item in a list of search results. We use this JSON schema to pass to a language model along with the HTML content to extract structured data from the HTML. The language model uses the JSON schema to extract data from the HTML and retrieve values for fields in the JSON schema, following the schema.
-
-Generating this HTML manually is not feasible, so you need to generate the JSON schema using the HTML content. The HTML copied from the crawled website is provided below, which we believe contains the repetitive pattern.
-
-# Schema main keys:
-- name: This is the name of the schema.
-- baseSelector: This is the CSS or XPATH selector that identifies the base element that contains all the repetitive patterns.
-- baseFields: This is a list of fields that you extract from the base element itself.
-- fields: This is a list of fields that you extract from the children of the base element. {{name, selector, type}} based on the type, you may have extra keys such as "attribute" when the type is "attribute".
-
-# Extra Context:
-In this context, the following items may or may not be present:
-- Example of target JSON object: This is a sample of the final JSON object that we hope to extract from the HTML using the schema you are generating.
-- Extra Instructions: This is optional instructions to consider when generating the schema provided by the user.
-- Query or explanation of target/goal data item: This is a description of what data we are trying to extract from the HTML. This explanation means we're not sure about the rigid schema of the structures we want, so we leave it to you to use your expertise to create the best and most comprehensive structures aimed at maximizing data extraction from this page. You must ensure that you do not pick up nuances that may exist on a particular page. The focus should be on the data we are extracting, and it must be valid, safe, and robust based on the given HTML.
-
-# What if there is no example of target JSON object and also no extra instructions or even no explanation of target/goal data item?
-In this scenario, use your best judgment to generate the schema. You need to examine the content of the page and understand the data it provides. If the page contains repetitive data, such as lists of items, products, jobs, places, books, or movies, focus on one single item that repeats. If the page is a detailed page about one product or item, create a schema to extract the entire structured data. At this stage, you must think and decide for yourself. Try to maximize the number of fields that you can extract from the HTML.
-
-# What are the instructions and details for this schema generation?
-{prompt_template}"""
-    }
-    user_message = {
-        "role": "user",
-        "content": f"""
-            HTML to analyze:
-            ```html
-            {html_for_schema}
-            ```
-            """
-    }
-
-        if query:
-            user_message["content"] += f"\n\n## Query or explanation of target/goal data item:\n{query}"
-        if target_json_example:
-            user_message["content"] += f"\n\n## Example of target JSON object:\n```json\n{target_json_example}\n```"
-
-        if query and not target_json_example:
-            user_message["content"] += """IMPORTANT: To remind you, in this process, we are not providing a rigid example of the adjacent objects we seek. We rely on your understanding of the explanation provided in the above section. Make sure to grasp what we are looking for and, based on that, create the best schema.."""
-        elif not query and target_json_example:
-            user_message["content"] += """IMPORTANT: Please remember that in this process, we provided a proper example of a target JSON object. Make sure to adhere to the structure and create a schema that exactly fits this example. If you find that some elements on the page do not match completely, vote for the majority."""
-        elif not query and not target_json_example:
-            user_message["content"] += """IMPORTANT: Since we neither have a query nor an example, it is crucial to rely solely on the HTML content provided. Leverage your expertise to determine the schema based on the repetitive patterns observed in the content."""
-        
-        user_message["content"] += """IMPORTANT: Ensure your schema remains reliable by avoiding selectors that appear to generate dynamically and are not dependable. You want a reliable schema, as it consistently returns the same data even after many page reloads.
-
-        Analyze the HTML and generate a JSON schema that follows the specified format. Only output valid JSON schema, nothing else.
-        """
-
-    # 3) Call internal LLM
-    combined_prompt = system_msg + "\n\n" + user_content
-    try:
-        resp = perform_completion_with_backoff(
-            provider=LLM_PROVIDER,
-            prompt_with_variables=combined_prompt,
-            json_response=True,
-            api_token=LLM_API_TOKEN,
-            base_url=LLM_BASE_URL,
-        )
-    except Exception as e:
-        log.error(f"Internal LLM call failed: {e}")
-        raise
-
-    # 4) Parse output
-    content = resp.choices[0].message.content
-    try:
-        schema = json.loads(content)
-    except json.JSONDecodeError as e:
-        log.error(f"Failed to parse schema JSON: {e}\nOutput:\n{content}")
-        raise
-
-    log.info(f"Generated schema for {url}: {schema}")
-    return schema
-
-
-
-
 # def generate_schema_from_llm(
-#     url: str,
-#     query=DEFAULT_QUERY
+#         url: str,
+#         query: str = DEFAULT_QUERY,
 # ) -> str:
-#     page = requests.get(url).text
+#     # 1) Download and prune HTML
+#     page = requests.get(url, timeout=10).text
 #     soup = BeautifulSoup(page, "lxml")
-#     html_snippet = soup.encode_contents().decode() if soup else page
-#     pruner = PruningContentFilter(threshold=0.5)
-#     filtered_chunks = pruner.filter_content(html_snippet)
-#     html_for_schema = "\n".join(filtered_chunks)
+#     snippet = soup.encode_contents().decode() if soup else page
+#     chunks = PruningContentFilter(threshold=0.5).filter_content(snippet)
+#     html_for_schema = "\n".join(chunks)
 
-#     # llm_cfg = LLMConfig(
-#     #     provider="openai/gpt-4o-mini",
-#     #     api_token=os.getenv("OPENAI_API_KEY"),
-#     #     temprature=0.0
-#     # )
-#     llm_cfg = LLMConfig(
-#         # provider="meta/llama-3.2-90b-vision-instruct",
-#         provider="google/gemma-3-27b-it",
-#         base_url="http://epr-ai-lno-p01.epri.com:8000/v1/chat/completions",
-#         api_token="null"
-#     )
-    
-#     schema = JsonCssExtractionStrategy.generate_schema(
-#         html=html_for_schema,
-#         schema_type="CSS",
-#         query=query,
-#         target_json_example=json.dumps([{
-#             "course_code": "BIOL 0280",
-#             "course_title": "Biochemistry",
-#             "course_description": "Lectures and recitation sections explore…"
-#         }], indent=2),
-#         llm_config=llm_cfg
-#     )
-    
+#     # 2) Build messages
+
+#     system_message = {
+#             "role": "system", 
+#             "content": f"""You specialize in generating special JSON schemas for web scraping. This schema uses CSS or XPATH selectors to present a repetitive pattern in crawled HTML, such as a product in a product list or a search result item in a list of search results. We use this JSON schema to pass to a language model along with the HTML content to extract structured data from the HTML. The language model uses the JSON schema to extract data from the HTML and retrieve values for fields in the JSON schema, following the schema.
+
+# Generating this HTML manually is not feasible, so you need to generate the JSON schema using the HTML content. The HTML copied from the crawled website is provided below, which we believe contains the repetitive pattern.
+
+# # Schema main keys:
+# - name: This is the name of the schema.
+# - baseSelector: This is the CSS or XPATH selector that identifies the base element that contains all the repetitive patterns.
+# - baseFields: This is a list of fields that you extract from the base element itself.
+# - fields: This is a list of fields that you extract from the children of the base element. {{name, selector, type}} based on the type, you may have extra keys such as "attribute" when the type is "attribute".
+
+# # Extra Context:
+# In this context, the following items may or may not be present:
+# - Example of target JSON object: This is a sample of the final JSON object that we hope to extract from the HTML using the schema you are generating.
+# - Extra Instructions: This is optional instructions to consider when generating the schema provided by the user.
+# - Query or explanation of target/goal data item: This is a description of what data we are trying to extract from the HTML. This explanation means we're not sure about the rigid schema of the structures we want, so we leave it to you to use your expertise to create the best and most comprehensive structures aimed at maximizing data extraction from this page. You must ensure that you do not pick up nuances that may exist on a particular page. The focus should be on the data we are extracting, and it must be valid, safe, and robust based on the given HTML.
+
+# # What if there is no example of target JSON object and also no extra instructions or even no explanation of target/goal data item?
+# In this scenario, use your best judgment to generate the schema. You need to examine the content of the page and understand the data it provides. If the page contains repetitive data, such as lists of items, products, jobs, places, books, or movies, focus on one single item that repeats. If the page is a detailed page about one product or item, create a schema to extract the entire structured data. At this stage, you must think and decide for yourself. Try to maximize the number of fields that you can extract from the HTML.
+
+# # What are the instructions and details for this schema generation?
+# {prompt_template}"""
+#     }
+#     user_message = {
+#         "role": "user",
+#         "content": f"""
+#             HTML to analyze:
+#             ```html
+#             {html_for_schema}
+#             ```
+#             """
+#     }
+
+#         if query:
+#             user_message["content"] += f"\n\n## Query or explanation of target/goal data item:\n{query}"
+#         if target_json_example:
+#             user_message["content"] += f"\n\n## Example of target JSON object:\n```json\n{target_json_example}\n```"
+
+#         if query and not target_json_example:
+#             user_message["content"] += """IMPORTANT: To remind you, in this process, we are not providing a rigid example of the adjacent objects we seek. We rely on your understanding of the explanation provided in the above section. Make sure to grasp what we are looking for and, based on that, create the best schema.."""
+#         elif not query and target_json_example:
+#             user_message["content"] += """IMPORTANT: Please remember that in this process, we provided a proper example of a target JSON object. Make sure to adhere to the structure and create a schema that exactly fits this example. If you find that some elements on the page do not match completely, vote for the majority."""
+#         elif not query and not target_json_example:
+#             user_message["content"] += """IMPORTANT: Since we neither have a query nor an example, it is crucial to rely solely on the HTML content provided. Leverage your expertise to determine the schema based on the repetitive patterns observed in the content."""
+        
+#         user_message["content"] += """IMPORTANT: Ensure your schema remains reliable by avoiding selectors that appear to generate dynamically and are not dependable. You want a reliable schema, as it consistently returns the same data even after many page reloads.
+
+#         Analyze the HTML and generate a JSON schema that follows the specified format. Only output valid JSON schema, nothing else.
+#         """
+
+#     # 3) Call internal LLM
+#     combined_prompt = system_msg + "\n\n" + user_content
+#     try:
+#         resp = perform_completion_with_backoff(
+#             provider=LLM_PROVIDER,
+#             prompt_with_variables=combined_prompt,
+#             json_response=True,
+#             api_token=LLM_API_TOKEN,
+#             base_url=LLM_BASE_URL,
+#         )
+#     except Exception as e:
+#         log.error(f"Internal LLM call failed: {e}")
+#         raise
+
+#     # 4) Parse output
+#     content = resp.choices[0].message.content
+#     try:
+#         schema = json.loads(content)
+#     except json.JSONDecodeError as e:
+#         log.error(f"Failed to parse schema JSON: {e}\nOutput:\n{content}")
+#         raise
+
+#     log.info(f"Generated schema for {url}: {schema}")
 #     return schema
+
+
+
+
+def generate_schema_from_llm(
+    url: HttpUrl,
+    query=DEFAULT_QUERY
+) -> dict:
+    page = requests.get(str(url)).text
+    soup = BeautifulSoup(page, "lxml")
+    html_snippet = soup.encode_contents().decode() if soup else page
+    pruner = PruningContentFilter(threshold=0.5)
+    filtered_chunks = pruner.filter_content(html_snippet)
+    html_for_schema = "\n".join(filtered_chunks)
+
+    llm_cfg = LLMConfig(
+        provider="openai/gpt-4o-mini",
+        api_token=os.getenv("OPENAI_API_KEY"),
+        temprature=0.0
+    )
+    # llm_cfg = LLMConfig(`
+    #     # provider="meta/llama-3.2-90b-vision-instruct",
+    #     provider="google/gemma-3-27b-it",
+    #     base_url="http://epr-ai-lno-p01.epri.com:8000/v1/chat/completions",
+    #     api_token="null"
+    # )`
+    
+    schema = JsonCssExtractionStrategy.generate_schema(
+        html=html_for_schema,
+        schema_type="CSS",
+        query=query,
+        target_json_example=json.dumps([{
+            "course_code": "BIOL 0280",
+            "course_title": "Biochemistry",
+            "course_description": "Lectures and recitation sections explore…"
+        }], indent=2),
+        llm_config=llm_cfg
+    )
+    
+    return schema
 
 async def generate_schema(
     source: SourceConfig,
 ) -> dict:
     log = logging.getLogger(__name__)
-    raw = generate_schema_from_llm(source.schema_url)
+    raw = generate_schema_from_llm(url=source.schema_url)
     if isinstance(raw, str):
         schema = json.loads(raw)
     elif isinstance(raw, dict):
