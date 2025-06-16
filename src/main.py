@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from .prompts.find_repeating import FindRepeating
 
 from src.config import SourceConfig, config
 from src.crawler import crawl_and_collect_urls
@@ -82,4 +83,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+
+    tester: FindRepeating = FindRepeating(selector_type="css")
+    print(tester.system["content"])
+
