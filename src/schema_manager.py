@@ -64,13 +64,13 @@ async def _generate_schema_from_llm(
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.5)
+    pruner = PruningContentFilter(threshold=0.3)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
 
 
     course_prompt: FindRepeating = FindRepeating()
-    course_prompt.set_specialization("You specialize in exacting structured course data from course catalog websites.")
+    course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")
     course_prompt.set_repeating_block("course block")
     course_prompt.set_required_fields(["course_title", "course_description"])
     course_prompt.set_optional_fields(["course_code"])
