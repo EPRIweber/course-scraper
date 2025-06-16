@@ -505,10 +505,21 @@ URL="http://epr-ai-lno-p01.epri.com:8000/v1/chat/completions"
 #     log.info(f"Generated schema for {url}: {schema}")
 #     return schema
 
+async def generate_schema(
+    source: SourceConfig,
+) -> dict:
+    log = logging.getLogger(__name__)
+    raw = _generate_schema_from_llm(url=source.schema_url)
+    if isinstance(raw, str):
+        schema = json.loads(raw)
+    elif isinstance(raw, dict):
+        schema = raw
+    else:
+        raise TypeError(f"Unexpected schema type: {type(raw)}")
+    log.info(f"Generated schema for {source.name!r}:\n{schema}")
+    return schema
 
-
-
-def generate_schema_from_llm(
+def _generate_schema_from_llm(
     url: HttpUrl,
     query=DEFAULT_QUERY
 ) -> dict:
@@ -543,18 +554,4 @@ def generate_schema_from_llm(
         llm_config=llm_cfg
     )
     
-    return schema
-
-async def generate_schema(
-    source: SourceConfig,
-) -> dict:
-    log = logging.getLogger(__name__)
-    raw = generate_schema_from_llm(url=source.schema_url)
-    if isinstance(raw, str):
-        schema = json.loads(raw)
-    elif isinstance(raw, dict):
-        schema = raw
-    else:
-        raise TypeError(f"Unexpected schema type: {type(raw)}")
-    log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema
