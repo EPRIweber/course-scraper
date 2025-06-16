@@ -20,13 +20,13 @@ async def scrape_urls(
     schema: Dict[str, Any],
     source: SourceConfig
 ) -> List[Dict[str, Any]]:
-    return await scrape_with_schema(
+    return await _scrape_with_schema(
         urls=urls,
         schema=schema,
         max_concurrency=source.max_concurrency
     )
 
-async def scrape_with_schema(
+async def _scrape_with_schema(
     urls: List[str],
     schema: Dict[str, Any],
     max_concurrency: int = 10,
