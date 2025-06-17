@@ -27,7 +27,7 @@ class EPRI_API:
         response = requests.post(f"{self.api_url}{endpoint}", json=payload, headers=headers)
         if not response.ok:
             # DEBUG PRINT
-            print("LLM request payload:", json.dumps(payload, indent=2))
+            # print("LLM request payload:", json.dumps(payload, indent=2))
             print("LLM error response:", response.status_code, response.text)
         response.raise_for_status()
         return response.json()
@@ -36,7 +36,7 @@ class EPRI_API:
             self,
             model: str,
             messages: List[Dict[str, str]],
-            max_tokens: int = 131072,
+            max_tokens: int = 10000,
             temperature: float = None,
             top_p: float = None,
             response_format: Optional[Dict[str, Any]] = None,

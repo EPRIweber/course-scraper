@@ -72,6 +72,7 @@ async def main():
 
 
     # for source in config.sources:
+    #     schema, usage = await process_source(source)
     #     item: SourceConfig = source
     #     schema = await storage.get_schema(item.name)
     #     with open(f"{item.name}_schema.json", "w") as f:
@@ -79,7 +80,7 @@ async def main():
 
     test : SourceConfig = config.sources[0]
     schema, usage = await generate_schema(test)
-    print(schema)
+    print(json.dumps(schema, indent=2))
     print(f"\n\n\n Usage: {usage}\n\n\n")
 
 

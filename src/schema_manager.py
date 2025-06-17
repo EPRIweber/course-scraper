@@ -29,9 +29,10 @@ async def _generate_schema_from_llm(
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.3)
+    pruner = PruningContentFilter(threshold=0.5)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
+    print(f"Characters in HTML for schema: {len(html_for_schema)}")
 
 
     course_prompt: FindRepeating = FindRepeating()
@@ -58,23 +59,27 @@ async def _generate_schema_from_llm(
     response = llm.chat_completion(
         model=LLAMA,
         messages=[system_message, user_message],
-        max_tokens=131072,
+        max_tokens=30000,
         temperature=0.0,
         response_format={
             "type": "json_object",
             "json_schema": {
-                "type": "object",
-                "properties": {
-                    "name":          {"type": "string"},
-                    "baseSelector":  {"type": "string"},
-                    "fields": {
-                        "type":     "array",
-                        "items":    {"type": "object"}
-                    }
+                "name": "CourseExtractionSchema",
+                "description": "Schema for extracting structured course data from course catalog websites.",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "name":          {"type": "string"},
+                        "baseSelector":  {"type": "string"},
+                        "fields": {
+                            "type":     "array",
+                            "items":    {"type": "object"}
+                        }
+                    },
+                    "required": ["name", "baseSelector", "fields"]
                 },
-                "required": ["name", "baseSelector", "fields"]
-            },
-            "strict": True
+                "strict": True
+            }
         }
     )
 
