@@ -6,15 +6,14 @@ from pathlib import Path
 from datetime import datetime, timezone
 import uuid
 
-# Use relative imports for modules within the same package
-from .config import SourceConfig, config
-from .crawler import crawl_and_collect_urls
-from .prefilter import prefilter_urls
-from .schema_manager import generate_schema
-from .scraper import scrape_urls
-from .storage import LocalFileStorage, StorageBackend
-from .models import SourceRunResult, ErrorLog, JobSummary
+from src.config import SourceConfig, config
+from src.crawler import crawl_and_collect_urls
+from src.models import ErrorLog, JobSummary, SourceRunResult
 from .reporting import generate_summary_report
+from src.prefilter import prefilter_urls
+from src.schema_manager import generate_schema
+from src.scraper import scrape_urls
+from src.storage import LocalFileStorage, FirestoreStorage, StorageBackend
 
 # Setup centralized logging
 log_file_path = Path("scraper.log")
@@ -115,7 +114,7 @@ async def process_source(source: SourceConfig) -> SourceRunResult:
 
     finally:
         # Use timezone-aware UTC datetime object to resolve deprecation warning
-        run_result.end_time = datetime.now(timezone.utc)
+        run_result.end_time = datetime.now(datetime.timezone.utc)
 
     return run_result
 
@@ -130,7 +129,7 @@ async def main():
     job_summary = JobSummary(job_id=job_id, total_sources=len(config.sources))
 
     tasks = [process_source(src) for src in config.sources]
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks, return_exceptions=False) # Set return_exceptions=True to return errors instead of failing
 
     # Use timezone-aware UTC datetime object
     job_summary.end_time = datetime.now(timezone.utc)
@@ -153,6 +152,18 @@ async def main():
     logger.info("Scraping job finished.")
     if job_summary.failed > 0:
         logger.warning(f"{job_summary.failed} source(s) failed. Check the summary above and scraper.log for details.")
+
+
+
+    # for source in config.sources:
+    #     item: SourceConfig = source
+    #     schema = await storage.get_schema(item.name)
+    #     with open(f"{item.name}_schema.json", "w") as f:
+    #         f.write(json.dumps(schema, indent=2))
+
+    # test: SourceConfig = config.sources[0]
+    # schema = await generate_schema(test)
+    # print(json.dumps(schema, indent=2))
 
 
 if __name__ == "__main__":
