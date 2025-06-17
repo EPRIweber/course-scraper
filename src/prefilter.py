@@ -6,7 +6,7 @@ from typing import List
 async def prefilter_urls(
     urls: List[str],
     max_concurrency: int = 20,
-    timeout: float = 2.0
+    timeout: int = 15
 ) -> List[str]:
     """
     Concurrently HEAD-check each URL and return only those with a 200 OK.

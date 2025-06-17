@@ -53,7 +53,7 @@ async def _static_bfs_crawl(
     queue = deque([(root_url, 0)])
     sem = asyncio.Semaphore(concurrency)
 
-    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         async def fetch(url: str) -> str:
             async with sem:
                 resp = await client.get(url, headers={'User-Agent': 'Mozilla/5.0'})

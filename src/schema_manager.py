@@ -28,17 +28,18 @@ async def generate_schema(
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
-def _generate_schema_from_llm(
+async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> dict:
     """Helper function to perform the actual LLM call to Gemini."""
+    log = logging.getLogger(__name__)
     page = requests.get(url).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
     pruner = PruningContentFilter(threshold=0.5)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
-    # log characters in the html before sending to LLM
+    log.info(f"HTML content length: {len(html_for_schema)} characters")
     
     course_prompt: FindRepeating = FindRepeating()
     course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")

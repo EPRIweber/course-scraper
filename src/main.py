@@ -53,8 +53,8 @@ async def process_source(source: SourceConfig) -> SourceRunResult:
     try:
         # STAGE 1: Crawl & Prefilter URLs
         stage = "crawl"
-        urls = await storage.get_urls(source.name)
-        if not urls:
+        urls: list = await storage.get_urls(source.name)
+        if not urls or len(urls) == 0:
             logger.info(f"[{source.name}] No URLs in storage, starting new crawl.")
             crawled_urls = await crawl_and_collect_urls(source)
             run_result.stats.urls_found = len(crawled_urls)
@@ -75,9 +75,10 @@ async def process_source(source: SourceConfig) -> SourceRunResult:
         stage = "schema"
         schema = await storage.get_schema(source.name)
         if not schema or not schema.get("baseSelector"):
-            logger.info(f"[{source.name}] No valid schema in storage, generating new one with Gemini.")
-            schema = await generate_schema(source)
+            logger.info(f"[{source.name}] No valid schema in storage, generating new schema.")
+            schema, usage = await generate_schema(source)
             await storage.save_schema(source.name, schema)
+            logger.info(f"[{source.name}] Generated new schema using {usage} tokens.")
         else:
             logger.info(f"[{source.name}] Loaded schema with baseSelector='{schema.get('baseSelector')}'")
         
@@ -114,7 +115,7 @@ async def process_source(source: SourceConfig) -> SourceRunResult:
 
     finally:
         # Use timezone-aware UTC datetime object to resolve deprecation warning
-        run_result.end_time = datetime.now(datetime.timezone.utc)
+        run_result.end_time = datetime.now(timezone.utc)
 
     return run_result
 
