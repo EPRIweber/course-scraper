@@ -1,10 +1,12 @@
 # src/schema_manager.py
 import json
 import logging
+import os
 from pathlib import Path
 
 from pydantic import HttpUrl
 from src.config import SourceConfig
+from crawl4ai import JsonCssExtractionStrategy, LLMConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 import requests, os, json
@@ -15,26 +17,29 @@ from src.prompts.find_repeating import FindRepeating
 
 GEMMA="google/gemma-3-27b-it"
 LLAMA="meta/llama-3.2-90b-vision-instruct"
-EPRI_URL="http://epr-ai-lno-p01.epri.com:8002"
+LLAMA_URL="http://epr-ai-lno-p01.epri.com:8002"
+
 
 async def generate_schema(
     source: SourceConfig,
 ) -> dict:
+    log = logging.getLogger(__name__)
     schema, usage = await _generate_schema_from_llm(url=source.schema_url)
+    log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
-async def _generate_schema_from_llm(
-    url: HttpUrl
+def _generate_schema_from_llm(
+    url: HttpUrl,
 ) -> dict:
-    page = requests.get(str(url)).text
+    """Helper function to perform the actual LLM call to Gemini."""
+    page = requests.get(url).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
     pruner = PruningContentFilter(threshold=0.5)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
-    print(f"Characters in HTML for schema: {len(html_for_schema)}")
-
-
+    # log characters in the html before sending to LLM
+    
     course_prompt: FindRepeating = FindRepeating()
     course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")
     course_prompt.set_repeating_block("course block")
@@ -52,7 +57,7 @@ async def _generate_schema_from_llm(
     sys_prompt = course_prompt.build_sys_prompt()
     user_prompt = course_prompt.build_user_prompt()
 
-    llm = LlamaModel(api_url=EPRI_URL)
+    llm = LlamaModel(api_url=LLAMA_URL)
     system_message = { "role": "system", "content": sys_prompt}
     user_message = {"role": "user", "content": user_prompt}
 

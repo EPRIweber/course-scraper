@@ -5,11 +5,15 @@ import re
 from pathlib import Path
 from typing import List, Set, Union
 from urllib.parse import urljoin, urlparse
+import logging
 
 import httpx
 from bs4 import BeautifulSoup
 
-from src.config import SourceConfig
+# Use relative imports for modules within the same package
+from .config import SourceConfig
+
+logger = logging.getLogger(__name__)
 
 async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
     """
@@ -17,10 +21,10 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
     Returns a sorted list of unique URLs.
     """
     urls = await _static_bfs_crawl(
-        root_url=source.root_url,
-        max_crawl_depth=source.crawl_depth,
-        include_external_links=source.include_external,
-        concurrency=source.crawl_depth * 5  # heuristic for parallelism
+        root_url=str(source.root_url),
+        max_crawl_depth=source.crawl_depth or 3,
+        include_external_links=source.include_external or False,
+        concurrency=source.max_concurrency or 10
     )
     return sorted(urls)
 
@@ -34,58 +38,63 @@ class ExcludePatternFilter:
 
 
 async def _static_bfs_crawl(
-    root_url: Union[str, object],
-    max_crawl_depth: int = 5,
+    root_url: str,
+    max_crawl_depth: int = 3,
     include_external_links: bool = False,
-    concurrency: int = 20
+    concurrency: int = 10
 ) -> Set[str]:
-    root = str(root_url)
-    domain = urlparse(root).netloc
+    """Performs a breadth-first search crawl, returning a set of unique URLs found."""
+    domain = urlparse(root_url).netloc
     exclude_filter = ExcludePatternFilter([
-        r"/pdf/", r"\.pdf$", r"/archive/", r"/search/"
+        r"/pdf/", r"\.pdf$", r"/archive/", r"/search/", r"\.jpg$", r"\.png$", r"\.gif$"
     ])
 
     seen: Set[str] = set()
-    queue = deque([(root, 0)])
+    queue = deque([(root_url, 0)])
     sem = asyncio.Semaphore(concurrency)
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         async def fetch(url: str) -> str:
             async with sem:
-                resp = await client.get(url)
+                resp = await client.get(url, headers={'User-Agent': 'Mozilla/5.0'})
                 resp.raise_for_status()
                 return resp.text
 
         while queue:
             url, depth = queue.popleft()
-            if url in seen:
+            if url in seen or depth >= max_crawl_depth:
                 continue
             seen.add(url)
-
-            if depth >= max_crawl_depth:
-                continue
-
+            
             try:
+                logger.debug(f"Crawling URL (depth {depth}): {url}")
                 html = await fetch(url)
-            except Exception:
-                # skip pages that fail
+            except httpx.RequestError as e:
+                logger.warning(f"Request failed for {e.request.url!r} - {type(e).__name__}. Skipping.")
+                continue
+            except httpx.HTTPStatusError as e:
+                logger.warning(f"HTTP error {e.response.status_code} for {e.request.url!r}. Skipping.")
+                continue
+            except Exception as e:
+                logger.error(f"An unexpected error occurred while fetching {url}: {e}", exc_info=False)
                 continue
 
             base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
             soup = BeautifulSoup(html, "lxml")
             for a in soup.find_all("a", href=True):
                 href = a["href"].split("#")[0]
-                full = urljoin(base, href)
+                if not href or href.startswith(('mailto:', 'tel:')):
+                    continue
+                
+                full_url = urljoin(base, href)
 
-                # domain filter
-                if not include_external_links and urlparse(full).netloc != domain:
+                if not include_external_links and urlparse(full_url).netloc != domain:
                     continue
 
-                # exclude patterns
-                if exclude_filter.exclude(full):
+                if exclude_filter.exclude(full_url):
                     continue
 
-                if full not in seen:
-                    queue.append((full, depth + 1))
+                if full_url not in seen:
+                    queue.append((full_url, depth + 1))
 
     return seen
