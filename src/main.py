@@ -78,8 +78,9 @@ async def main():
     #         f.write(json.dumps(schema, indent=2))
 
     test : SourceConfig = config.sources[0]
-    schema = await generate_schema(test)
+    schema, usage = await generate_schema(test)
     print(schema)
+    print(f"\n\n\n Usage: {usage}\n\n\n")
 
 
 if __name__ == "__main__":

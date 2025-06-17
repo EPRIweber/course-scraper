@@ -16,7 +16,7 @@ class FindRepeating(PromptBase):
 
 
     # Included Fields
-    
+
     ## Required:
       -   `selector_type`: The type of selector to use, either "css" or "xpath". Defaults to "css".
       -   `target_html`: The HTML content that will be analyzed to generate the JSON schema.
@@ -31,7 +31,7 @@ class FindRepeating(PromptBase):
     """
     
     # Prompt template for generating JSON schema
-    template = """You specialize in generating special JSON schemas for web scraping. This schema uses CSS or XPATH selectors to present a repetitive pattern in crawled HTML, such as a product in a product list or a search result item in a list of search results. We use this JSON schema to pass to a language model along with the HTML content to extract structured data from the HTML. The language model uses the JSON schema to extract data from the HTML and retrieve values for fields in the JSON schema, following the schema.
+    sys_template = """You specialize in generating special JSON schemas for web scraping. This schema uses CSS or XPATH selectors to present a repetitive pattern in crawled HTML, such as a product in a product list or a search result item in a list of search results. We use this JSON schema to pass to a language model along with the HTML content to extract structured data from the HTML. The language model uses the JSON schema to extract data from the HTML and retrieve values for fields in the JSON schema, following the schema.
 
 Generating this HTML manually is not feasible, so you need to generate the JSON schema using the HTML content. The HTML copied from the crawled website is provided below, which we believe contains the repetitive pattern.
 
@@ -48,8 +48,8 @@ Generating this HTML manually is not feasible, so you need to generate the JSON 
 
 # What are the instructions and details for generating the schema?
 {prompt_template}
-
-
+"""
+    user_template = """
 
 HTML to analyze:
 ```html
@@ -153,7 +153,7 @@ Analyze the HTML and generate a JSON schema that follows the specified format. O
             raise ValueError("target_json_example cannot be empty")
         self.target_json_example = target_json_example
     
-    def build_prompt(self) -> str:
+    def build_sys_prompt(self) -> str:
         """
         Build the prompt for the FindRepeating class.
 
@@ -180,8 +180,47 @@ Analyze the HTML and generate a JSON schema that follows the specified format. O
         optional_description = f"# The repeating block **MAY** have the optional fields:\n{optional_fields}" if self.optional_fields else ""
         target_json_example = f"# Example of target JSON object:\n```json\n{self.target_json_example}\n```" if self.target_json_example else ""
 
-        return self.render(
-            template=self.template,
+        return self.render_sys(
+            template=self.sys_template,
+            prompt_template=prompt_template,
+            target_html=target_html,
+            role=role,
+            block_description=block_description,
+            fields_description=fields_description,
+            required_description=required_description,
+            optional_description=optional_description,
+            target_json_example=target_json_example
+        )
+
+    def build_user_prompt(self) -> str:
+        """
+        Build the prompt for the FindRepeating class.
+
+        Options:
+        - `selector_type`
+        - `target_html`
+        - `role`
+        - `repeating_block`
+        - `required_fields`
+        - `optional_fields`
+        - `target_json_example`
+        """
+        if not self.target_html:
+            raise ValueError("target_html must be set before building the prompt")
+        
+        prompt_template = SCHEMA_BUILDER[self.selector_type]
+        target_html = self.target_html
+        role = self.role or "You specialize in generating JSON schemas for web scraping."
+        block_description = f"Within the given HTML, first you must identify the baseSelector to select distinct {self.repeating_block} instances." if self.repeating_block else "First you must identify the baseSelector to select the target repeating block."
+        fields_description = "The fields extracted for this schema **MUST** come from the field examples provided." if self.required_fields else ("You may use the fields provided below as examples for what to extract:" if (self.required_fields or self.optional_fields) else "It is up to you to decide the fields for extracting" )
+        required_fields = "\n".join(f" - {f}" for f in self.required_fields) if self.required_fields else ""
+        required_description = f"# The repeating block will **ALWAYS** have the required fields:\n{required_fields}" if self.required_fields else ""
+        optional_fields = "\n".join(f" - {f}" for f in self.optional_fields) if self.optional_fields else ""
+        optional_description = f"# The repeating block **MAY** have the optional fields:\n{optional_fields}" if self.optional_fields else ""
+        target_json_example = f"# Example of target JSON object:\n```json\n{self.target_json_example}\n```" if self.target_json_example else ""
+
+        return self.render_user(
+            template=self.user_template,
             prompt_template=prompt_template,
             target_html=target_html,
             role=role,

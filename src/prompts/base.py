@@ -1,7 +1,12 @@
 # src/prompts/base.py
 class PromptBase:
-    template: str
+    sys_template: str
+    user_template: str
 
-    def render(self, **kwargs) -> str:
+    def render_sys(self, **kwargs) -> str:
         """Simple .format() wrapper so subclasses only build kwargs."""
-        return self.template.format(**kwargs)
+        return self.sys_template.format(**kwargs)
+
+    def render_user(self, **kwargs) -> str:
+        """Simple .format() wrapper so subclasses only build kwargs."""
+        return self.user_template.format(**kwargs)
