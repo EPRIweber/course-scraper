@@ -42,16 +42,16 @@ def _generate_schema_from_llm(
     
     course_prompt: FindRepeating = FindRepeating()
     course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")
-    course_prompt.set_repeating_block("course block")
+    course_prompt.set_repeating_block("course_block")
     course_prompt.set_required_fields(["course_title", "course_description"])
     course_prompt.set_optional_fields(["course_code"])
     course_prompt.explicit_fields = True
     course_prompt.set_target_html(html_for_schema)
     course_prompt.set_target_json_example(
         json.dumps([{
-            "course_code": "BIOL 0280",
             "course_title": "Biochemistry",
-            "course_description": "Lectures and recitation sections explore the structure and function of biological molecules, including proteins, nucleic acids, carbohydrates, and lipids. Topics include enzyme kinetics, metabolic pathways, and the molecular basis of genetic information."
+            "course_description": "Lectures and recitation sections explore the structure and function of biological molecules, including proteins, nucleic acids, carbohydrates, and lipids. Topics include enzyme kinetics, metabolic pathways, and the molecular basis of genetic information.",
+            "course_code": "BIOL 0280"
         }], indent=2)
     )
     sys_prompt = course_prompt.build_sys_prompt()
