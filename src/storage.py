@@ -153,11 +153,10 @@ class SqlServerStorage(StorageBackend):
     async def get_data(self, source_id: str) -> List[Dict[str, Any]]:
         """Fetch first 100 course records for given source."""
         rows = await self._fetch(
-            """SELECT c.course_code, c.course_title, c.course_description
+            """SELECT TOP 100 c.course_code, c.course_title, c.course_description
                 FROM courses c
                 JOIN sources s ON s.source_id = c.course_source_id
-                WHERE s.source_id = ?
-                LIMIT 100;""",
+                WHERE s.source_id = ?;""",
             source_id,
         )
         return [
@@ -174,14 +173,14 @@ class SqlServerStorage(StorageBackend):
         if not data: return
         sql = """
         MERGE courses WITH(HOLDLOCK) AS t
-        USING (SELECT ? AS sid, ? AS code, ? AS title, ? AS descr) AS s
+        USING (SELECT ? AS sid, ? AS code, ? AS title, ? AS description) AS s
         ON t.course_source_id = s.sid AND COALESCE(t.course_code,'') = COALESCE(s.code,'') 
            AND t.course_title = s.title
         WHEN MATCHED THEN UPDATE
-             SET course_description = s.descr
+             SET course_description = s.description
         WHEN NOT MATCHED THEN
              INSERT (course_source_id,course_code,course_title,course_description)
-             VALUES (s.sid,s.code,s.title,s.descr);
+             VALUES (s.sid,s.code,s.title,s.description);
         """
         def _bulk():
             cur = self._conn.cursor()

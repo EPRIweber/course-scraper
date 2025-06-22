@@ -3,12 +3,14 @@
 import requests, json, logging
 
 from pydantic import HttpUrl
-from src.config import SourceConfig
+from typing import List
+from src.config import SourceConfig, ValidationCheck
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 
 from src.llm_wrapper import LlamaModel
 from src.prompts.find_repeating import FindRepeating
+from src.scraper import scrape_urls
 
 GEMMA="google/gemma-3-27b-it"
 LLAMA_URL="http://epr-ai-lno-p01.epri.com:8000"
@@ -92,3 +94,55 @@ def _generate_schema_from_llm(
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse schema JSON:\n{content}") from e
 
+async def validate_schema(
+    schema: dict,
+    source: SourceConfig,
+    *,
+    required_fields: List[str] | None = None
+) -> ValidationCheck:
+    """
+    Quickly sanity-check a freshly-generated schema against
+    ``source.schema_url``.
+
+    Returns
+    -------
+    ValidationCheck
+        valid == True  -> safe to persist the schema
+        valid == False -> see .fields_missing / .errors for details
+    """
+    log = logging.getLogger(__name__)
+
+    required_fields = required_fields or ["course_title", "course_description"]
+    fields_missing: list[str] = []
+    errors: list[str] = []
+
+    try:
+        # Scrape just the schema_url page
+        records, _, _, json_errors = await scrape_urls(
+            urls=[str(source.schema_url)],
+            schema=schema,
+            source=source
+        )
+
+        # surface JSON decode errors, if any
+        if json_errors:
+            errors.extend(json_errors)
+
+        if not records:
+            errors.append("No records extracted from the test page.")
+        else:
+            # check that each required field appears at least once
+            for field in required_fields:
+                if not any(field in rec and rec[field] for rec in records):
+                    fields_missing.append(field)
+
+    except Exception as exc:
+        log.exception("Schema validation failed")
+        errors.append(str(exc))
+
+    valid = not errors and not fields_missing
+    return ValidationCheck(
+        valid=valid,
+        fields_missing=fields_missing,
+        errors=errors
+    )

@@ -1,4 +1,5 @@
 # src/config.py
+from dataclasses import dataclass
 from pydantic import BaseModel, HttpUrl, Extra
 from typing import List, Optional
 import yaml
@@ -49,3 +50,14 @@ class Stage(IntEnum):
     SCHEMA  = 1
     SCRAPE  = 2
     STORAGE = 3
+
+@dataclass
+class ValidationCheck:
+    """
+    - valid: bool
+    - fields_missing: list[str]
+    - errors: list[any]
+    """
+    valid: bool
+    fields_missing: list[str]
+    errors: list[any]
