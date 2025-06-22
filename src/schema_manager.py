@@ -19,7 +19,7 @@ async def generate_schema(
     source: SourceConfig,
 ) -> dict:
     log = logging.getLogger(__name__)
-    schema, usage = await _generate_schema_from_llm(url=source.schema_url)
+    schema, usage = _generate_schema_from_llm(url=source.schema_url)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
@@ -33,7 +33,8 @@ def _generate_schema_from_llm(
     pruner = PruningContentFilter(threshold=0.5)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
-    # log characters in the html before sending to LLM
+    log = logging.getLogger(__name__)
+    log.log(f"generating schema using html with {len(html_for_schema)} characters")
     
     course_prompt: FindRepeating = FindRepeating()
     course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")

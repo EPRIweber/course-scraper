@@ -2,4 +2,5 @@ sources:
 - name: brown_university
   root_url: https://bulletin.brown.edu/
   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
+  type: "html"
   crawl_depth: 3

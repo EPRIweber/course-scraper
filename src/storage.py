@@ -1,7 +1,6 @@
 # src/storage.py
 import asyncio
 import json
-import logging
 import pyodbc
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Sequence
@@ -29,7 +28,6 @@ class StorageBackend(ABC):
 class SqlServerStorage(StorageBackend):
     # ------------------------------------------------------------------ init
     def __init__(self, connect_str: str, loop: asyncio.AbstractEventLoop | None = None):
-        self.log   = logging.getLogger(__name__)
         self._conn = pyodbc.connect(connect_str, autocommit=False)
         self._loop = loop or asyncio.get_event_loop()
 
@@ -89,6 +87,7 @@ class SqlServerStorage(StorageBackend):
         return row[0].run_id
 
     async def log(self, run_id: str, src_id: str, stage: int, msg: str):
+        """Insert a log message for a run and source."""
         await self._exec(
             "INSERT INTO logs (log_run_id,log_source_id,log_stage,log_message,log_ts)"
             "VALUES (?,?,?,?,SYSUTCDATETIME())",
@@ -96,18 +95,20 @@ class SqlServerStorage(StorageBackend):
         )
 
     # -------------------------------------------------------------------- URLS
-    async def get_urls(self, source_name: str) -> List[str]:
+    async def get_urls(self, source_id: str) -> List[str]:
+        """Fetch URLs for a source that are marked as targets."""
         rows = await self._fetch(
             """SELECT u.url_link
                  FROM urls u
                  JOIN sources s ON s.source_id = u.url_source_id
-                WHERE s.source_name = ?
+                WHERE s.source_id = ?
                 AND u.is_target = 1;""",
-            source_name,
+            source_id,
         )
         return [r.url_link for r in rows]
 
     async def save_urls(self, source_id: str, urls: Sequence[str]) -> None:
+        """Insert or update URLs for a source."""
         sql = """
         MERGE urls WITH (HOLDLOCK) AS t
         USING (SELECT ? AS source_id, ? AS link) AS s
@@ -123,17 +124,19 @@ class SqlServerStorage(StorageBackend):
         await self._run_sync(_bulk_insert)
 
     # -------------------------------------------------------------- schema JSON
-    async def get_schema(self, source_name: str) -> Dict[str, Any]:
+    async def get_schema(self, source_id: str) -> Dict[str, Any]:
+        """Fetch the scraper schema JSON for a source."""
         rows = await self._fetch(
             """SELECT ss.scraper_schema_json
                  FROM scraper_schemas ss
                  JOIN sources s ON s.source_id = ss.scraper_schema_source_id
-                WHERE s.source_name = ?""",
-            source_name,
+                WHERE s.source_id = ?""",
+            source_id,
         )
         return json.loads(rows[0].scraper_schema_json) if rows else {}
 
     async def save_schema(self, source_id: str, schema: Dict[str, Any]) -> None:
+        """Insert or update the scraper schema JSON for a source."""
         await self._exec(
             """
             MERGE scraper_schemas AS t
@@ -146,8 +149,28 @@ class SqlServerStorage(StorageBackend):
             source_id, json.dumps(schema)
         )
 
-    # -------------------------------------------------------------- course rows
+    # -------------------------------------------------------------- course records
+    async def get_data(self, source_id: str) -> List[Dict[str, Any]]:
+        """Fetch first 100 course records for given source."""
+        rows = await self._fetch(
+            """SELECT c.course_code, c.course_title, c.course_description
+                FROM courses c
+                JOIN sources s ON s.source_id = c.course_source_id
+                WHERE s.source_id = ?
+                LIMIT 100;""",
+            source_id,
+        )
+        return [
+            {
+                "course_code": r.course_code,
+                "course_title": r.course_title,
+                "course_description": r.course_description,
+            }
+            for r in rows
+        ]
+    
     async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None:
+        """Insert or update course records in the database."""
         if not data: return
         sql = """
         MERGE courses WITH(HOLDLOCK) AS t
@@ -172,28 +195,27 @@ class SqlServerStorage(StorageBackend):
             self._conn.commit()
         await self._run_sync(_bulk)
 
-    async def update_url_targets(
-        self, source_id: str, good: Sequence[str], bad: Sequence[str]
-    ) -> None:
-        if not good and not bad:
+    async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None:
+        """Update url is_target value based on if page contained target data"""
+        if not good_urls and not bad_urls:
             return
 
         def _run():
             cur = self._conn.cursor()
 
-            if good:
-                # any url in *good* is definitely still a target
+            if good_urls:
+                # any url in *good_urls* is definitely still a target
                 cur.executemany(
                     "UPDATE urls SET is_target = 1 "
                     "WHERE url_source_id = ? AND url_link = ?",
-                    [(source_id, u) for u in good]
+                    [(source_id, u) for u in good_urls]
                 )
-            if bad:
+            if bad_urls:
                 # pages crawled but produced nothing → toggle off
                 cur.executemany(
                     "UPDATE urls SET is_target = 0 "
                     "WHERE url_source_id = ? AND url_link = ?",
-                    [(source_id, u) for u in bad]
+                    [(source_id, u) for u in bad_urls]
                 )
             self._conn.commit()
 

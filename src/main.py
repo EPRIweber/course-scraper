@@ -1,6 +1,6 @@
 # src/main.py
 import asyncio
-import logging
+import logging, logging.config
 import os
 from pathlib import Path
 
@@ -71,18 +71,21 @@ async def process_source(run_id: str, source: SourceConfig) -> SourceRunResult:
         # -------- CRAWL -------------------------------------------------
         stage = Stage.CRAWL
         await _log(stage, "starting crawl")
-        urls = await storage.get_urls(source.name)
+        urls = await storage.get_urls(src_id)
         if not urls:
             crawled = await crawl_and_collect_urls(source)
             filtered = await prefilter_urls(crawled, source)
             await storage.save_urls(src_id, filtered)
             urls = filtered
+            if not urls:
+                _log(stage, f"ERROR: No URLs found after crawling and filtering")
+                return
         await _log(stage, f"{len(urls)} urls ready")
 
         # -------- SCHEMA ------------------------------------------------
         stage = Stage.SCHEMA
         await _log(stage, "fetching / generating schema")
-        schema = await storage.get_schema(source.name)
+        schema = await storage.get_schema(src_id)
         if not schema.get("baseSelector"):
             schema, usage = await generate_schema(source)
             await storage.save_schema(src_id, schema)
@@ -91,10 +94,14 @@ async def process_source(run_id: str, source: SourceConfig) -> SourceRunResult:
 
         # -------- SCRAPE ------------------------------------------------
         stage = Stage.SCRAPE
+        records = storage.get_data(src_id)
         await _log(stage, f"scraping {len(urls)} pages")
-        records, good_urls, bad_urls = await scrape_urls(urls, schema, source)
+        records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
         if not records:
-            raise ValueError("No records scraped, check schema or URLs")
+            await _log(stage, "ERROR: No records extracted")
+            return
+        if json_errors:
+            await _log(stage, f"WARNING: Found {len(json_errors)}: \n{"\n".join(json_errors)}")
         await _log(stage, f"{len(records)} records scraped")
 
         # -------- STORAGE -----------------------------------------------

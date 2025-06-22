@@ -22,9 +22,9 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
     """
     urls = await _static_bfs_crawl(
         root_url=str(source.root_url),
-        max_crawl_depth=source.crawl_depth or 3,
-        include_external_links=source.include_external or False,
-        concurrency=source.max_concurrency or 10
+        max_crawl_depth=source.crawl_depth,
+        include_external_links=source.include_external,
+        concurrency=source.max_concurrency
     )
     return sorted(urls)
 

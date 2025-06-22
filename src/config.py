@@ -1,6 +1,4 @@
 # src/config.py
-from dataclasses import dataclass
-import logging
 from pydantic import BaseModel, HttpUrl, Extra
 from typing import List, Optional
 import yaml
@@ -15,7 +13,7 @@ class SourceConfig(BaseModel):
     type: str = "html"
     root_url: HttpUrl
     schema_url: HttpUrl
-    include_external: Optional[bool] = None
+    include_external: Optional[bool] = False
     crawl_depth: Optional[int] = 5
     page_timeout_s: Optional[int] = 10
     word_count_min: Optional[int] = None

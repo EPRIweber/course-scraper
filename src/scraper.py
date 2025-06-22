@@ -20,18 +20,18 @@ async def scrape_urls(
     schema: Dict[str, Any],
     source: SourceConfig
 ) -> List[Dict[str, Any]]:
-    records, good_urls  = await _scrape_with_schema(
+    records, good_urls, json_errors  = await _scrape_with_schema(
         urls=urls,
         schema=schema,
         max_concurrency=source.max_concurrency
     )
     bad_urls       = set(urls) - good_urls
-    return records, good_urls, bad_urls
+    return records, good_urls, bad_urls, json_errors
 
 async def _scrape_with_schema(
     urls: List[str],
     schema: Dict[str, Any],
-    max_concurrency: int = 10,
+    max_concurrency: int,
 ) -> List[List[Dict[str, Any]]]:
     """
     Apply the JSON-CSS schema to each URL in parallel using arun_many.
@@ -51,6 +51,7 @@ async def _scrape_with_schema(
 
     all_records: List[Dict[str, Any]] = []
     good_pages: set[str] = set()
+    json_errors = []
 
     # 2) Fire off all URLs in parallel
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
@@ -67,6 +68,7 @@ async def _scrape_with_schema(
             items = json.loads(raw)
         except json.JSONDecodeError:
             log.error(f"Failed to decode JSON from {page_result.url}: {raw[:100]}...")
+            json_errors.append(f"JSON errors on {page_result.url}: {raw[:100]}{"..." if len(raw) > 100 else ""}")
             continue
 
         source_url = getattr(page_result, "url", None) or getattr(page_result, "request_url", None)
@@ -96,4 +98,4 @@ async def _scrape_with_schema(
 
             all_records.append(item)
 
-    return all_records, good_pages
+    return all_records, good_pages, json_errors
