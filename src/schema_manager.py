@@ -1,24 +1,19 @@
 # src/schema_manager.py
-import json
-import logging
-import os
-from pathlib import Path
+
+import requests, json, logging
 
 from pydantic import HttpUrl
 from src.config import SourceConfig
-from crawl4ai import JsonCssExtractionStrategy, LLMConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
-import requests, os, json
-from pathlib import Path
 
 from src.llm_wrapper import LlamaModel
 from src.prompts.find_repeating import FindRepeating
 
 GEMMA="google/gemma-3-27b-it"
+LLAMA_URL="http://epr-ai-lno-p01.epri.com:8000"
 LLAMA="meta/llama-3.2-90b-vision-instruct"
 LLAMA_URL="http://epr-ai-lno-p01.epri.com:8002"
-
 
 async def generate_schema(
     source: SourceConfig,

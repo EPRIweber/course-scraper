@@ -1,22 +1,26 @@
 # src/config.py
+from dataclasses import dataclass
+import logging
 from pydantic import BaseModel, HttpUrl, Extra
 from typing import List, Optional
 import yaml
 from pathlib import Path
+from enum import IntEnum
 
 class SourceConfig(BaseModel):
     """
     Configuration for a single data source (school).
     """
     name: str
+    type: str = "html"
     root_url: HttpUrl
     schema_url: HttpUrl
     include_external: Optional[bool] = None
-    crawl_depth: Optional[int] = 3
+    crawl_depth: Optional[int] = 5
     page_timeout_s: Optional[int] = 10
     word_count_min: Optional[int] = None
     query: Optional[str] = None
-    max_concurrency: Optional[int] = 10  # Default concurrency for tasks
+    max_concurrency: Optional[int] = 10
 
     class Config:
         extra = 'forbid'
@@ -42,3 +46,8 @@ except FileNotFoundError:
 except Exception as e:
     raise ValueError(f"Error loading or parsing sources.yaml: {e}")
 
+class Stage(IntEnum):
+    CRAWL   = 0
+    SCHEMA  = 1
+    SCRAPE  = 2
+    STORAGE = 3
