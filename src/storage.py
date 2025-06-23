@@ -99,14 +99,7 @@ class SqlServerStorage(StorageBackend):
     # -------------------------------------------------------------------- URLS
     async def get_urls(self, source_id: str) -> List[str]:
         """Fetch URLs for a source that are marked as targets."""
-        rows = await self._fetch(
-            """SELECT u.url_link
-                 FROM urls u
-                 JOIN sources s ON s.source_id = u.url_source_id
-                WHERE s.source_id = ?
-                AND u.is_target = 1;""",
-            source_id,
-        )
+        rows = await self._fetch("{CALL dbo.get_target_urls(?)}", source_id)
         return [r.url_link for r in rows]
 
     async def save_urls(self, source_id: str, urls: Sequence[str]) -> None:
