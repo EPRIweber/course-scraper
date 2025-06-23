@@ -27,13 +27,15 @@ class StorageBackend(ABC):
 
 class SqlServerStorage(StorageBackend):
     # ------------------------------------------------------------------ init
-    def __init__(self, connect_str: str, loop: asyncio.AbstractEventLoop | None = None):
+    def __init__(self, connect_str: str): # , loop: asyncio.AbstractEventLoop | None = None):
         self._conn = pyodbc.connect(connect_str, autocommit=False)
-        self._loop = loop or asyncio.get_event_loop()
+        self._loop = None # loop or asyncio.get_event_loop()
 
     # ---------------------------------------------------------------- helpers
     def _run_sync(self, fn):          # tiny wrapper to push sync work off-thread
-        return self._loop.run_in_executor(None, fn)
+        loop = self._loop or asyncio.get_running_loop()
+        self._loop = loop
+        return loop.run_in_executor(None, fn)
 
     # async DB helpers
     async def _exec(self, sql: str, *p):
@@ -52,20 +54,20 @@ class SqlServerStorage(StorageBackend):
             """
             MERGE sources AS t
             USING (SELECT
-                     ? AS name, ? AS type , ? AS base, ? AS schema, ? AS pdf , ? AS depth
+                     ? AS name, ? AS type , ? AS base, ? AS schema_url, ? AS pdf , ? AS depth
                   ) AS s
             ON t.source_name = s.name
             WHEN MATCHED THEN
                  UPDATE SET
                      t.source_type        = s.type,
                      t.source_base_url    = s.base,
-                     t.source_schema_url  = s.schema,
+                     t.source_schema_url  = s.schema_url,
                      t.source_pdf_url     = s.pdf,
                      t.source_crawl_depth = s.depth
             WHEN NOT MATCHED THEN
                  INSERT (source_name,source_type,source_base_url,
                          source_schema_url,source_pdf_url,source_crawl_depth)
-                 VALUES (s.name,s.type,s.base,s.schema,s.pdf,s.depth);
+                 VALUES (s.name,s.type,s.base,s.schema_url,s.pdf,s.depth);
             """,
             src_cfg.name,
             src_cfg.type,

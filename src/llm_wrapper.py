@@ -24,11 +24,15 @@ class EPRI_API:
             pass
 
     def _make_request(self, endpoint: str, payload: Dict, headers: Dict) -> Dict:
+        print("Making LLM request...")
+        print(f"- Endpoint: {self.api_url}{endpoint}")
+        print(f"- Model: {payload["model"]}")
         response = requests.post(f"{self.api_url}{endpoint}", json=payload, headers=headers)
         if not response.ok:
             # DEBUG PRINT
             # print("LLM request payload:", json.dumps(payload, indent=2))
             print("LLM error response:", response.status_code, response.text)
+        print(f"Response Complete")
         response.raise_for_status()
         return response.json()
     

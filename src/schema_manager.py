@@ -13,7 +13,7 @@ from src.prompts.find_repeating import FindRepeating
 from src.scraper import scrape_urls
 
 GEMMA="google/gemma-3-27b-it"
-LLAMA_URL="http://epr-ai-lno-p01.epri.com:8000"
+GEMMA_URL="http://epr-ai-lno-p01.epri.com:8000"
 LLAMA="meta/llama-3.2-90b-vision-instruct"
 LLAMA_URL="http://epr-ai-lno-p01.epri.com:8002"
 
@@ -21,11 +21,11 @@ async def generate_schema(
     source: SourceConfig,
 ) -> dict:
     log = logging.getLogger(__name__)
-    schema, usage = _generate_schema_from_llm(url=source.schema_url)
+    schema, usage = await _generate_schema_from_llm(url=source.schema_url)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
-def _generate_schema_from_llm(
+async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> dict:
     """Helper function to perform the actual LLM call to Gemini."""
@@ -36,7 +36,7 @@ def _generate_schema_from_llm(
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
-    log.log(f"generating schema using html with {len(html_for_schema)} characters")
+    log.info(f"generating schema using html with {len(html_for_schema)} characters")
     
     course_prompt: FindRepeating = FindRepeating()
     course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")
@@ -62,7 +62,7 @@ def _generate_schema_from_llm(
     response = llm.chat_completion(
         model=LLAMA,
         messages=[system_message, user_message],
-        max_tokens=30000,
+        max_tokens=10000,
         temperature=0.0,
         response_format={
             "type": "json_object",

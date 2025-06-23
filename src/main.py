@@ -1,4 +1,5 @@
 # src/main.py
+
 import asyncio
 import logging, logging.config
 from logging.config import dictConfigClass
@@ -30,6 +31,8 @@ LOGGING: dictConfigClass  = {
     "": {"handlers": ["console", "master"], "level": "INFO"},
   },
 }
+
+# Remove master handler to remove local storage
 LOGGING["handlers"].pop("master", None)
 LOGGING["loggers"][""]["handlers"] = ["console"]
 
