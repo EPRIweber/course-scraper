@@ -97,40 +97,32 @@ class SqlServerStorage(StorageBackend):
 
     # -------------------------------------------------------------- schema JSON
     async def get_schema(self, source_id: str) -> Dict[str, Any]:
-        """Fetch the scraper schema JSON for a source."""
-        rows = await self._fetch(
-            """SELECT ss.scraper_schema_json
-                 FROM scraper_schemas ss
-                 JOIN sources s ON s.source_id = ss.scraper_schema_source_id
-                WHERE s.source_id = ?""",
-            source_id,
-        )
+        """Fetch the scraper schema JSON for a source by calling a stored procedure."""
+        # Updated to call the newly named stored procedure: dbo.get_schema
+        rows = await self._fetch("{CALL dbo.get_schema(?)}", source_id)
+        
+        # The logic to handle the result remains the same.
         return json.loads(rows[0].scraper_schema_json) if rows else {}
 
     async def save_schema(self, source_id: str, schema: Dict[str, Any]) -> None:
-        """Insert or update the scraper schema JSON for a source."""
+        """Insert or update the scraper schema JSON for a source by calling a stored procedure."""
+        # Serialize the dictionary to a JSON string before sending.
+        schema_json = json.dumps(schema)
+
+        # Call the dbo.save_schema stored procedure with the required parameters.
         await self._exec(
-            """
-            MERGE scraper_schemas AS t
-            USING (SELECT ? AS id, ? AS js) AS s
-            ON t.scraper_schema_source_id = s.id
-            WHEN MATCHED THEN UPDATE SET scraper_schema_json = s.js
-            WHEN NOT MATCHED THEN INSERT (scraper_schema_source_id,scraper_schema_json)
-                 VALUES(s.id,s.js);
-            """,
-            source_id, json.dumps(schema)
+            "{CALL dbo.save_schema(?, ?)}",
+            source_id,
+            schema_json
         )
 
     # -------------------------------------------------------------- course records
     async def get_data(self, source_id: str) -> List[Dict[str, Any]]:
-        """Fetch first 100 course records for given source."""
-        rows = await self._fetch(
-            """SELECT TOP 100 c.course_code, c.course_title, c.course_description
-                FROM courses c
-                JOIN sources s ON s.source_id = c.course_source_id
-                WHERE s.source_id = ?;""",
-            source_id,
-        )
+        """Fetch first 100 course records for a given source by calling a stored procedure."""
+        # Call the dbo.get_data stored procedure.
+        rows = await self._fetch("{CALL dbo.get_data(?)}", source_id)
+
+        # The logic for processing the results remains unchanged.
         return [
             {
                 "course_code": r.course_code,
@@ -141,30 +133,35 @@ class SqlServerStorage(StorageBackend):
         ]
     
     async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None:
-        """Insert or update course records in the database."""
-        if not data: return
-        sql = """
-        MERGE courses WITH(HOLDLOCK) AS t
-        USING (SELECT ? AS sid, ? AS code, ? AS title, ? AS description) AS s
-        ON t.course_source_id = s.sid AND COALESCE(t.course_code,'') = COALESCE(s.code,'') 
-           AND t.course_title = s.title
-        WHEN MATCHED THEN UPDATE
-             SET course_description = s.description
-        WHEN NOT MATCHED THEN
-             INSERT (course_source_id,course_code,course_title,course_description)
-             VALUES (s.sid,s.code,s.title,s.description);
-        """
-        def _bulk():
-            cur = self._conn.cursor()
-            for rec in data:
-                cur.execute(sql,
-                    source_id,
-                    rec.get("course_code"),
-                    rec["course_title"],
-                    rec["course_description"],
-                )
+        """Insert or update course records by sending them in bulk to a stored procedure."""
+        if not data:
+            return
+
+        # Prepare the data as a list of tuples in the exact order
+        # of the columns defined in our 'dbo.CourseData_v1' table type.
+        params = [
+            (
+                rec.get("course_code"),
+                rec.get("course_title"),
+                rec.get("course_description"),
+            )
+            for rec in data
+        ]
+
+        # The SQL to execute now simply calls the stored procedure.
+        # The second parameter is our list of tuples, which pyodbc will
+        # pass as the table-valued parameter.
+        sql = "{CALL dbo.save_course_data(?, ?)}"
+
+        def _bulk_insert():
+            # Using a cursor's 'fast_executemany' mode is highly recommended for performance
+            # with table-valued parameters, though it might require specific driver settings.
+            # self._conn.fast_executemany = True # Optional but recommended
+            with self._conn.cursor() as cur:
+                cur.execute(sql, source_id, params)
             self._conn.commit()
-        await self._run_sync(_bulk)
+
+        await self._run_sync(_bulk_insert)
 
     async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None:
         """Update url is_target value based on if page contained target data"""
