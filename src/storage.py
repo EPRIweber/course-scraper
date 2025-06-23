@@ -47,46 +47,23 @@ class SqlServerStorage(StorageBackend):
     # ------------------------------------------------------------- source meta
     async def ensure_source(self, src_cfg: SourceConfig) -> str:
         """
-        Insert (or fetch) the GUID of this source in `sources`
-        and return it.
+        Insert (or fetch) the GUID of this source in `sources` and return it.
         """
-        await self._exec(
-            """
-            MERGE sources AS t
-            USING (SELECT
-                     ? AS name, ? AS type , ? AS base, ? AS schema_url, ? AS pdf , ? AS depth
-                  ) AS s
-            ON t.source_name = s.name
-            WHEN MATCHED THEN
-                 UPDATE SET
-                     t.source_type        = s.type,
-                     t.source_base_url    = s.base,
-                     t.source_schema_url  = s.schema_url,
-                     t.source_pdf_url     = s.pdf,
-                     t.source_crawl_depth = s.depth
-            WHEN NOT MATCHED THEN
-                 INSERT (source_name,source_type,source_base_url,
-                         source_schema_url,source_pdf_url,source_crawl_depth)
-                 VALUES (s.name,s.type,s.base,s.schema_url,s.pdf,s.depth);
-            """,
+        row = await self._fetch(
+            "{CALL dbo.upsert_source(?,?,?,?,?,?)}",
             src_cfg.name,
             src_cfg.type,
             str(src_cfg.root_url),
             str(src_cfg.schema_url),
             getattr(src_cfg, "pdf_url", None),
-            src_cfg.crawl_depth,
-        )
-        row = await self._fetch(
-            "SELECT source_id FROM sources WHERE source_name = ?", src_cfg.name
+            src_cfg.crawl_depth
         )
         return row[0].source_id
 
     # ------------------------------------------------------------------- runs
     async def new_run(self) -> str:
         """Insert a row into `runs`; return the GUID."""
-        await self._exec("INSERT INTO runs DEFAULT VALUES;")
-        row = await self._fetch("SELECT TOP 1 run_id FROM runs ORDER BY run_ts DESC;")
-        return row[0].run_id
+        return await self._fetch("EXEC dbo.begin_run").fetchone().run_id
 
     async def log(self, run_id: str, src_id: str, stage: int, msg: str):
         """Insert a log message for a run and source."""
@@ -214,3 +191,6 @@ class SqlServerStorage(StorageBackend):
             self._conn.commit()
 
         await self._run_sync(_run)
+    
+    async def end_run(self, run_id: int):
+        await self._exec(f"EXEC dbo.end_run(?)", run_id)

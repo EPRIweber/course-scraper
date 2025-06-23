@@ -60,10 +60,10 @@ def get_storage_backend() -> StorageBackend:
         logger.exception(exc)
         return None
 
-storage = get_storage_backend()
-
-async def process_source(run_id: str, source: SourceConfig) -> SourceRunResult:
-    result = SourceRunResult(source_name=source.name, status="in-progress")
+async def process_source(run_id: str, source: SourceConfig, storage: StorageBackend) -> SourceRunResult | None:
+    # result = SourceRunResult(source_name=source.name, status="in-progress")
+    
+    # TODO: Remove once source retrieved from database in main
     source_id = await storage.ensure_source(source)
     stage  = Stage.CRAWL
 
@@ -117,12 +117,12 @@ async def process_source(run_id: str, source: SourceConfig) -> SourceRunResult:
         if not records:
             await _log(stage, f"no data found, scraping {len(urls)} pages")
             records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
+            if json_errors:
+                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{"\n\n\n".join(json_errors)}")
             if not records:
                 await _log(stage, "ERROR: No records extracted from pages")
                 await _log(stage, f"ERROR: Encountered {len(json_errors)} JSON errors: \n{"\n\n\n".join(json_errors)}")
                 return
-            if json_errors:
-                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{"\n\n\n".join(json_errors)}")
             await _log(stage, f"{len(records)} records scraped")
 
         # -------- STORAGE -----------------------------------------------
@@ -137,24 +137,38 @@ async def process_source(run_id: str, source: SourceConfig) -> SourceRunResult:
             )
         await _log(stage, "done")
 
-        result.status = "success"
+        # result.status = "success"
 
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
-        result.status = "failure"
+        # result.status = "failure"
 
-    return result
+    # return result
 
 async def main():
-    if storage:
-        run_id = await storage.new_run()
+    try:
+        storage = get_storage_backend()
+    except:
+        logger.critical(f"Correct SQL Server Credentials Not Provided")
+
+    # TODO: LOCK MUTEX, RETURNS RUN_ID (now will be identity key)
+    run_id = await storage.new_run() # create mutex
+
+    try:
         logger.info(f"Run ID: {run_id}")
 
+        # TODO: THIS IS WHERE SOURCES SHOULD BE PULLED FROM THE DATABASE
+        # EVENTUALLY, AUTO-GENERATE CONFIGS FOR SOURCES
+
         tasks = [process_source(run_id, s) for s in config.sources]
-        await asyncio.gather(*tasks, return_exceptions=False) # Set return_exceptions=True to return errors instead of failing
-    else:
-        logger.critical(f"Correct SQL Server Credentials Not Provided")
+        await asyncio.gather(*tasks, return_exceptions=False, storage=storage) # Set return_exceptions=True to return errors instead of failing
+    except Exception as exc:
+        logger.critical(f"Critical error occurred: {exc}")
+    
+    finally:
+        #TODO UNLOCK MUTEX
+        await storage.end_run(run_id)
     
 if __name__ == "__main__":
     try:
