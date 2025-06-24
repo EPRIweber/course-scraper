@@ -4,6 +4,7 @@ import asyncio
 import logging, logging.config
 from logging.config import dictConfigClass
 import os
+import traceback
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
 from src.crawler import crawl_and_collect_urls
