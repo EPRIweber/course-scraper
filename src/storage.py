@@ -88,12 +88,37 @@ class SqlServerStorage(StorageBackend):
         ]
 
 
-    async def log(self, run_id: str, src_id: str, stage: int, msg: str):
-        """Insert a log message for a run and source."""
+    async def log(self,
+                  run_id: int,
+                  src_id: str,
+                  stage: int,
+                  level: str,
+                  event_type: str,
+                  msg: str,
+                  details: str = None,
+                  metric_name: str = None,
+                  metric_value: float = None):
+        """Insert a structured log message for a run and source."""
+        # The original log_message column is now used for the concise,
+        # human-readable message.
+        sql = """
+        INSERT INTO logs (
+            log_run_id, log_source_id, log_stage, log_level,
+            event_type, log_message, details, metric_name, metric_value
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
         await self._exec(
-            "INSERT INTO logs (log_run_id,log_source_id,log_stage,log_message,log_ts)"
-            "VALUES (?,?,?,?,SYSUTCDATETIME())",
-            run_id, src_id, stage, msg
+            sql,
+            run_id,
+            src_id,
+            stage,
+            level,
+            event_type,
+            msg,  # The 'msg' parameter now goes into the 'log_message' column
+            details,
+            metric_name,
+            metric_value
         )
 
     # -------------------------------------------------------------------- URLS
