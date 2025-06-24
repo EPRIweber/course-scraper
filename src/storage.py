@@ -61,9 +61,32 @@ class SqlServerStorage(StorageBackend):
         return row[0].source_id
 
     # ------------------------------------------------------------------- runs
-    async def new_run(self) -> str:
-        """Insert a row into `runs`; return the GUID."""
-        return await self._fetch("EXEC dbo.begin_run").fetchone().run_id
+    async def begin_run(self) -> str:
+        row = await self._fetch("EXEC dbo.begin_run")
+        run_id = row[0][0] if row else None
+        if run_id is None:
+            raise RuntimeError("Another scrape is already running – mutex locked.")
+        return run_id
+
+    async def list_sources(self) -> list[SourceConfig]:
+        """Return *enabled* sources from DB (fallback to YAML handled in main)."""
+        rows = await self._fetch("EXEC dbo.get_enabled_sources")
+        if not rows:
+            return []
+        return [
+            SourceConfig(
+                name=r.name,
+                type=r.type,
+                root_url=r.root_url,
+                schema_url=r.schema_url,
+                include_external=r.include_external,
+                crawl_depth=r.crawl_depth,
+                page_timeout_s=r.page_timeout_s,
+                max_concurrency=r.max_concurrency,
+            )
+            for r in rows
+        ]
+
 
     async def log(self, run_id: str, src_id: str, stage: int, msg: str):
         """Insert a log message for a run and source."""

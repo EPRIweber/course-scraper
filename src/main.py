@@ -112,6 +112,7 @@ async def process_source(run_id: str, source: SourceConfig, storage: StorageBack
 
         # -------- SCRAPE ------------------------------------------------
         stage = Stage.SCRAPE
+        good_urls, bad_urls = [], []
         await _log(stage, f"attempting to get data...")
         records = await storage.get_data(source_id)
         if not records:
@@ -147,33 +148,65 @@ async def process_source(run_id: str, source: SourceConfig, storage: StorageBack
     # return result
 
 async def main():
+    storage = get_storage_backend()
+    if storage is None:
+        logger.critical("SQL credentials missing – aborting.")
+        return
+    
+    # --- mutex -----------------------------------------------------------
     try:
-        storage = get_storage_backend()
-    except:
-        logger.critical(f"Correct SQL Server Credentials Not Provided")
+        run_id = await storage.begin_run()          # atomic lock
+    except RuntimeError as e:
+        logger.error(str(e))
+        return
 
-    # TODO: LOCK MUTEX, RETURNS RUN_ID (now will be identity key)
-    run_id = await storage.new_run() # create mutex
+    logger.info("Run ID: %s", run_id)
 
     try:
-        logger.info(f"Run ID: {run_id}")
+        # 1.  Pull sources from DB; if table is empty, fall back to YAML list
+        sources = await storage.list_sources()
+        if not sources:
+            logger.warning("No sources in DB – falling back to YAML config.")
+            sources = config.sources
 
-        # TODO: THIS IS WHERE SOURCES SHOULD BE PULLED FROM THE DATABASE
-        # EVENTUALLY, AUTO-GENERATE CONFIGS FOR SOURCES
+        # 2.  Kick off scraping tasks
+        tasks = [process_source(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks)                # storage passed inside
 
-        tasks = [process_source(run_id, s) for s in config.sources]
-        await asyncio.gather(*tasks, return_exceptions=False, storage=storage) # Set return_exceptions=True to return errors instead of failing
     except Exception as exc:
-        logger.critical(f"Critical error occurred: {exc}")
-    
+        logger.exception("Critical error in run %s: %s", run_id, exc)
+
     finally:
-        #TODO UNLOCK MUTEX
-        await storage.end_run(run_id)
-    
+        await storage.end_run(run_id)               # unlock mutex
+        logger.info("Run %s completed – lock released.", run_id)
+
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (ValueError, FileNotFoundError) as e:
-        logger.critical(f"A critical configuration error occurred: {e}", exc_info=True)
-    except Exception as e:
-        logger.critical(f"An unexpected critical error occurred in main execution: {e}", exc_info=True)
+    asyncio.run(main())
+
+
+#     # TODO: LOCK MUTEX, RETURNS RUN_ID (now will be identity key)
+#     run_id = await storage.begin_run() # create mutex
+
+#     try:
+#         logger.info(f"Run ID: {run_id}")
+
+#         # TODO: THIS IS WHERE SOURCES SHOULD BE PULLED FROM THE DATABASE
+#         # EVENTUALLY, AUTO-GENERATE CONFIGS FOR SOURCES
+
+#         tasks = [process_source(run_id, s) for s in config.sources]
+#         await asyncio.gather(*tasks, return_exceptions=False, storage=storage) # Set return_exceptions=True to return errors instead of failing
+#     except Exception as exc:
+#         logger.critical(f"Critical error occurred: {exc}")
+    
+#     finally:
+#         #TODO UNLOCK MUTEX
+#         await storage.end_run(run_id)
+    
+# if __name__ == "__main__":
+#     try:
+#         asyncio.run(main())
+#     except (ValueError, FileNotFoundError) as e:
+#         logger.critical(f"A critical configuration error occurred: {e}", exc_info=True)
+#     except Exception as e:
+#         logger.critical(f"An unexpected critical error occurred in main execution: {e}", exc_info=True)
