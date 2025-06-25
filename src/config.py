@@ -59,15 +59,3 @@ class ValidationCheck:
     valid: bool
     fields_missing: list[str]
     errors: list[any]
-
-@dataclass
-class FindRepeatingInputs:
-    target_html: str
-    type: str = "css"
-    role: str = "You specialize in generating JSON schemas for web scraping."
-    block_description: str = (
-        "You need to examine the content of the page and understand the data it provides. " +
-        "If the page contains repetitive data, such as lists of items, products, jobs, places, books, or movies, focus on one single item that repeats. " +
-        "If the page is a detailed page about one product or item, create a schema to extract the entire structured data. " +
-        "At this stage, you must think and decide for yourself. Try to maximize the number of fields that you can extract from the HTML."
-    )

@@ -12,11 +12,6 @@ from src.llm_wrapper import LlamaModel, GemmaModel
 from src.prompts.find_repeating import FindRepeating
 from src.scraper import scrape_urls
 
-GEMMA="google/gemma-3-27b-it"
-GEMMA_URL="http://epr-ai-lno-p01.epri.com:8000"
-LLAMA="meta/llama-3.2-90b-vision-instruct"
-LLAMA_URL="http://epr-ai-lno-p01.epri.com:8002"
-
 async def generate_schema(
     source: SourceConfig,
 ) -> dict:
@@ -28,7 +23,7 @@ async def generate_schema(
 async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> dict:
-    """Helper function to perform the actual LLM call to Gemini."""
+    """Helper function to perform LLM call."""
     page = requests.get(url).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
@@ -58,35 +53,17 @@ async def _generate_schema_from_llm(
     # TODO: Add to classifier sys prompt
     # The user will provide the title and description for the course
 
-    llm = GemmaModel(api_url=GEMMA_URL)
+    # llm = GemmaModel()
+    llm = LlamaModel()
     system_message = { "role": "system", "content": sys_prompt}
     user_message = {"role": "user", "content": user_prompt}
 
+    llm.set_response_format()
+
     response = llm.chat_completion(
-        model=GEMMA,
         messages=[system_message, user_message],
         max_tokens=30000,
-        temperature=0.0,
-        response_format={
-            "type": "json_object",
-            "json_schema": {
-                "name": "CourseExtractionSchema",
-                "description": "Schema for extracting structured course data from course catalog websites.",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "name":          {"type": "string"},
-                        "baseSelector":  {"type": "string"},
-                        "fields": {
-                            "type":     "array",
-                            "items":    {"type": "object"}
-                        }
-                    },
-                    "required": ["name", "baseSelector", "fields"]
-                },
-                "strict": True
-            }
-        }
+        temperature=0.0
     )
 
     content = response["choices"][0]["message"]["content"]
@@ -97,7 +74,7 @@ async def _generate_schema_from_llm(
         else:
             raise ValueError("LLM returned an array; expected a single schema object")
 
-    usage   = response.get("usage", {})
+    usage = response.get("usage", {})
 
     try:
         return obj, usage
