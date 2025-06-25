@@ -17,11 +17,11 @@ class FindRepeating(PromptBase):
 
     # Included Fields
 
-    ## Required:
-      -   `selector_type`: The type of selector to use, either "css" or "xpath". Defaults to "css".
+    ## Required Inputs:
       -   `target_html`: The HTML content that will be analyzed to generate the JSON schema.
 
-    ## Optional:
+    ## Optional Inputs:
+      -   `selector_type`: The type of selector to use, either "css" or "xpath". Defaults to "css".
       -   `role`: The role of the agent, which specializes in generating JSON schemas for web scraping. Defaults to a generic role.
       -   `explicit_fields`: Whether to instruct the LLM to only used field provided. Defaults to True
       -   `repeating_block`: The repeating block of HTML that contains the data to be extracted. Defaults to None.
@@ -171,7 +171,7 @@ Analyze the HTML and generate a JSON schema that follows the specified format. O
         
         prompt_template = SCHEMA_BUILDER[self.selector_type]
         target_html = self.target_html
-        role = self.role or "You specialize in generating JSON schemas for web scraping."
+        role = self.role or "You specialize in generating JSON extraction schemas for web scraping."
         block_description = f"Within the given HTML, first you must identify the baseSelector to select distinct {self.repeating_block} instances." if self.repeating_block else "First you must identify the baseSelector to select the target repeating block."
         fields_description = "The fields extracted for this schema **MUST** come from the field examples provided." if self.required_fields else ("You may use the fields provided below as examples for what to extract:" if (self.required_fields or self.optional_fields) else "It is up to you to decide the fields for extracting" )
         required_fields = "\n".join(f" - {f}" for f in self.required_fields) if self.required_fields else ""

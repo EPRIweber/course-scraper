@@ -109,6 +109,7 @@ pydantic_core==2.33.2
 pyee==13.0.0
 Pygments==2.19.1
 PyJWT==2.10.1
+pyodbc==5.2.0
 pyOpenSSL==25.1.0
 pyparsing==3.2.3
 pyperclip==1.9.0

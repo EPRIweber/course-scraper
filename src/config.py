@@ -1,22 +1,23 @@
 # src/config.py
+from dataclasses import dataclass
 from pydantic import BaseModel, HttpUrl, Extra
 from typing import List, Optional
 import yaml
 from pathlib import Path
+from enum import IntEnum
 
 class SourceConfig(BaseModel):
     """
     Configuration for a single data source (school).
     """
     name: str
+    type: str = "html"
     root_url: HttpUrl
     schema_url: HttpUrl
-    include_external: Optional[bool] = None
-    crawl_depth: Optional[int] = 3
-    page_timeout_s: Optional[int] = 10
-    word_count_min: Optional[int] = None
-    query: Optional[str] = None
-    max_concurrency: Optional[int] = 10  # Default concurrency for tasks
+    include_external: Optional[bool] = False
+    crawl_depth: Optional[int] = 5
+    page_timeout_s: Optional[int] = 20
+    max_concurrency: Optional[int] = 10
 
     class Config:
         extra = 'forbid'
@@ -42,3 +43,31 @@ except FileNotFoundError:
 except Exception as e:
     raise ValueError(f"Error loading or parsing sources.yaml: {e}")
 
+class Stage(IntEnum):
+    CRAWL   = 0
+    SCHEMA  = 1
+    SCRAPE  = 2
+    STORAGE = 3
+
+@dataclass
+class ValidationCheck:
+    """
+    - valid: bool
+    - fields_missing: list[str]
+    - errors: list[any]
+    """
+    valid: bool
+    fields_missing: list[str]
+    errors: list[any]
+
+@dataclass
+class FindRepeatingInputs:
+    target_html: str
+    type: str = "css"
+    role: str = "You specialize in generating JSON schemas for web scraping."
+    block_description: str = (
+        "You need to examine the content of the page and understand the data it provides. " +
+        "If the page contains repetitive data, such as lists of items, products, jobs, places, books, or movies, focus on one single item that repeats. " +
+        "If the page is a detailed page about one product or item, create a schema to extract the entire structured data. " +
+        "At this stage, you must think and decide for yourself. Try to maximize the number of fields that you can extract from the HTML."
+    )

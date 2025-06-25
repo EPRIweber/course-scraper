@@ -22,9 +22,9 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
     """
     urls = await _static_bfs_crawl(
         root_url=str(source.root_url),
-        max_crawl_depth=source.crawl_depth or 3,
-        include_external_links=source.include_external or False,
-        concurrency=source.max_concurrency or 10
+        max_crawl_depth=source.crawl_depth,
+        include_external_links=source.include_external,
+        concurrency=source.max_concurrency
     )
     return sorted(urls)
 
@@ -44,10 +44,16 @@ async def _static_bfs_crawl(
     concurrency: int = 10
 ) -> Set[str]:
     """Performs a breadth-first search crawl, returning a set of unique URLs found."""
-    domain = urlparse(root_url).netloc
+    start = urlparse(root_url)
+    domain = start.netloc
+    root_path  = (start.path.rstrip("/") + "/") if start.path else "/"
     exclude_filter = ExcludePatternFilter([
         r"/pdf/", r"\.pdf$", r"/archive/", r"/search/", r"\.jpg$", r"\.png$", r"\.gif$"
     ])
+
+    def _inside_start_path(u: str) -> bool:
+        up = urlparse(u)
+        return (up.netloc == domain) and up.path.startswith(root_path)
 
     seen: Set[str] = set()
     queue = deque([(root_url, 0)])
@@ -88,8 +94,12 @@ async def _static_bfs_crawl(
                 
                 full_url = urljoin(base, href)
 
-                if not include_external_links and urlparse(full_url).netloc != domain:
-                    continue
+                if not _inside_start_path(full_url):
+                    if include_external_links:
+                        # If external links are allowed, skip the domain check
+                        pass
+                    else:
+                        continue
 
                 if exclude_filter.exclude(full_url):
                     continue
