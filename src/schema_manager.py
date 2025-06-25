@@ -8,7 +8,7 @@ from src.config import SourceConfig, ValidationCheck
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 
-from src.llm_wrapper import LlamaModel
+from src.llm_wrapper import LlamaModel, GemmaModel
 from src.prompts.find_repeating import FindRepeating
 from src.scraper import scrape_urls
 
@@ -55,14 +55,17 @@ async def _generate_schema_from_llm(
     sys_prompt = course_prompt.build_sys_prompt()
     user_prompt = course_prompt.build_user_prompt()
 
-    llm = LlamaModel(api_url=LLAMA_URL)
+    # TODO: Add to classifier sys prompt
+    # The user will provide the title and description for the course
+
+    llm = GemmaModel(api_url=GEMMA_URL)
     system_message = { "role": "system", "content": sys_prompt}
     user_message = {"role": "user", "content": user_prompt}
 
     response = llm.chat_completion(
-        model=LLAMA,
+        model=GEMMA,
         messages=[system_message, user_message],
-        max_tokens=10000,
+        max_tokens=30000,
         temperature=0.0,
         response_format={
             "type": "json_object",
@@ -87,10 +90,17 @@ async def _generate_schema_from_llm(
     )
 
     content = response["choices"][0]["message"]["content"]
+    obj = json.loads(content)
+    if isinstance(obj, list):
+        if len(obj) == 1:
+            obj = obj[0]
+        else:
+            raise ValueError("LLM returned an array; expected a single schema object")
+
     usage   = response.get("usage", {})
 
     try:
-        return json.loads(content), usage
+        return obj, usage
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse schema JSON:\n{content}") from e
 

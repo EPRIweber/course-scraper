@@ -40,7 +40,7 @@ class EPRI_API:
             self,
             model: str,
             messages: List[Dict[str, str]],
-            max_tokens: int = 10000,
+            max_tokens: int = 30000,
             temperature: float = None,
             top_p: float = None,
             response_format: Optional[Dict[str, Any]] = None,

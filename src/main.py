@@ -60,10 +60,7 @@ def get_storage_backend() -> StorageBackend:
         logger.exception(exc)
         return None
 
-async def process_source(run_id: str, source: SourceConfig, storage: StorageBackend) -> SourceRunResult | None:
-    # result = SourceRunResult(source_name=source.name, status="in-progress")
-    
-    # TODO: Remove once source retrieved from database in main
+async def process_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> SourceRunResult | None:
     source_id = await storage.ensure_source(source)
     stage  = Stage.CRAWL
 
@@ -93,11 +90,12 @@ async def process_source(run_id: str, source: SourceConfig, storage: StorageBack
         if not schema.get("baseSelector"):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
-            check: ValidationCheck = validate_schema(
+            check: ValidationCheck = await validate_schema(
                 schema=schema,
                 source=source
             )
             if check.valid:
+                await _log(stage, "successfully validated generated schema")
                 await storage.save_schema(source_id, schema)
             else:
                 _log(stage, "ERROR: Invalid schema generated")
@@ -160,7 +158,7 @@ async def main():
         logger.error(str(e))
         return
 
-    logger.info("Run ID: %s", run_id)
+    logger.info("Run ID: %d", run_id)
 
     try:
         # 1.  Pull sources from DB; if table is empty, fall back to YAML list
@@ -174,39 +172,11 @@ async def main():
         await asyncio.gather(*tasks)                # storage passed inside
 
     except Exception as exc:
-        logger.exception("Critical error in run %s: %s", run_id, exc)
+        logger.exception("Critical error in run %d: %s", run_id, exc)
 
     finally:
         await storage.end_run(run_id)               # unlock mutex
-        logger.info("Run %s completed – lock released.", run_id)
-
+        logger.info("Run %d completed – lock released.", run_id)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-#     # TODO: LOCK MUTEX, RETURNS RUN_ID (now will be identity key)
-#     run_id = await storage.begin_run() # create mutex
-
-#     try:
-#         logger.info(f"Run ID: {run_id}")
-
-#         # TODO: THIS IS WHERE SOURCES SHOULD BE PULLED FROM THE DATABASE
-#         # EVENTUALLY, AUTO-GENERATE CONFIGS FOR SOURCES
-
-#         tasks = [process_source(run_id, s) for s in config.sources]
-#         await asyncio.gather(*tasks, return_exceptions=False, storage=storage) # Set return_exceptions=True to return errors instead of failing
-#     except Exception as exc:
-#         logger.critical(f"Critical error occurred: {exc}")
-    
-#     finally:
-#         #TODO UNLOCK MUTEX
-#         await storage.end_run(run_id)
-    
-# if __name__ == "__main__":
-#     try:
-#         asyncio.run(main())
-#     except (ValueError, FileNotFoundError) as e:
-#         logger.critical(f"A critical configuration error occurred: {e}", exc_info=True)
-#     except Exception as e:
-#         logger.critical(f"An unexpected critical error occurred in main execution: {e}", exc_info=True)

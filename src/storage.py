@@ -32,17 +32,50 @@ class SqlServerStorage(StorageBackend):
         self._loop = None # loop or asyncio.get_event_loop()
 
     # ---------------------------------------------------------------- helpers
-    def _run_sync(self, fn):          # tiny wrapper to push sync work off-thread
+    def _run_sync(self, fn):
         loop = self._loop or asyncio.get_running_loop()
         self._loop = loop
         return loop.run_in_executor(None, fn)
 
     # async DB helpers
     async def _exec(self, sql: str, *p):
-        await self._run_sync(lambda: self._conn.execute(sql, *p).commit())
+        for attempt in range(2):
+            try:
+                await self._run_sync(lambda: self._conn.execute(sql, *p).commit())
+                return
+            except pyodbc.Error as e:
+                if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
+                    # Communication link failure / timeout → reconnect once
+                    self._conn.close()
+                    self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
+                    continue
+                raise
+
 
     async def _fetch(self, sql: str, *p):
-        return await self._run_sync(lambda: self._conn.execute(sql, *p).fetchall())
+        for attempt in range(2):
+            try:
+                return await self._run_sync(lambda: self._conn.execute(sql, *p).fetchall())
+            except pyodbc.Error as e:
+                if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
+                    self._conn.close()
+                    self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
+                    continue
+                raise
+
+
+    # ------------------------------------------------------------------- runs
+    async def begin_run(self) -> int:
+        row = await self._fetch("EXEC dbo.begin_run")
+        run_id = row[0][0] if row else None
+        if run_id is None:
+            raise RuntimeError("Another scrape is already running – mutex locked.")
+        return run_id
+
+    async def end_run(self, run_id: int):
+        await self._exec(f"EXEC dbo.end_run ?", run_id)
+
+
 
     # ------------------------------------------------------------- source meta
     async def ensure_source(self, src_cfg: SourceConfig) -> str:
@@ -50,23 +83,17 @@ class SqlServerStorage(StorageBackend):
         Insert (or fetch) the GUID of this source in `sources` and return it.
         """
         row = await self._fetch(
-            "{CALL dbo.upsert_source(?,?,?,?,?,?)}",
+            "{CALL dbo.upsert_source(?,?,?,?,?,?,?,?)}",
             src_cfg.name,
             src_cfg.type,
             str(src_cfg.root_url),
             str(src_cfg.schema_url),
-            getattr(src_cfg, "pdf_url", None),
-            src_cfg.crawl_depth
+            src_cfg.crawl_depth,
+            src_cfg.include_external,
+            src_cfg.page_timeout_s,
+            src_cfg.max_concurrency
         )
         return row[0].source_id
-
-    # ------------------------------------------------------------------- runs
-    async def begin_run(self) -> str:
-        row = await self._fetch("EXEC dbo.begin_run")
-        run_id = row[0][0] if row else None
-        if run_id is None:
-            raise RuntimeError("Another scrape is already running – mutex locked.")
-        return run_id
 
     async def list_sources(self) -> list[SourceConfig]:
         """Return *enabled* sources from DB (fallback to YAML handled in main)."""
@@ -88,7 +115,7 @@ class SqlServerStorage(StorageBackend):
         ]
 
 
-    async def log(self, run_id: str, src_id: str, stage: int, msg: str):
+    async def log(self, run_id: int, src_id: str, stage: int, msg: str):
         """Insert a log message for a run and source."""
         await self._exec(
             "INSERT INTO logs (log_run_id,log_source_id,log_stage,log_message,log_ts)"
@@ -117,6 +144,35 @@ class SqlServerStorage(StorageBackend):
                 cur.execute(sql, source_id, u)
             self._conn.commit()
         await self._run_sync(_bulk_insert)
+
+    
+    async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None:
+        """Update url is_target value based on if page contained target data"""
+        if not good_urls and not bad_urls:
+            return
+
+        def _run():
+            cur = self._conn.cursor()
+
+            if good_urls:
+                # any url in *good_urls* is definitely still a target
+                cur.executemany(
+                    "UPDATE urls SET is_target = 1 "
+                    "WHERE url_source_id = ? AND url_link = ?",
+                    [(source_id, u) for u in good_urls]
+                )
+            if bad_urls:
+                # pages crawled but produced nothing → toggle off
+                cur.executemany(
+                    "UPDATE urls SET is_target = 0 "
+                    "WHERE url_source_id = ? AND url_link = ?",
+                    [(source_id, u) for u in bad_urls]
+                )
+            self._conn.commit()
+
+        await self._run_sync(_run)
+    
+
 
     # -------------------------------------------------------------- schema JSON
     async def get_schema(self, source_id: str) -> Dict[str, Any]:
@@ -156,61 +212,29 @@ class SqlServerStorage(StorageBackend):
         ]
     
     async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None:
-        """Insert or update course records by sending them in bulk to a stored procedure."""
         if not data:
             return
 
-        # Prepare the data as a list of tuples in the exact order
-        # of the columns defined in our 'dbo.CourseData_v1' table type.
-        params = [
+        tvp_rows = [
             (
-                rec.get("course_code"),
-                rec.get("course_title"),
-                rec.get("course_description"),
+                rec.get("course_code") or None,
+                rec.get("course_title") or None,
+                rec.get("course_description") or None,
             )
             for rec in data
         ]
 
-        # The SQL to execute now simply calls the stored procedure.
-        # The second parameter is our list of tuples, which pyodbc will
-        # pass as the table-valued parameter.
-        sql = "{CALL dbo.save_course_data(?, ?)}"
+        sql = """
+            DECLARE @t dbo.CourseData_v1;
+            INSERT @t (course_code, course_title, course_description)
+            VALUES (?, ?, ?);
+            EXEC dbo.save_course_data ?, @t;
+        """
 
-        def _bulk_insert():
-            # Using a cursor's 'fast_executemany' mode is highly recommended for performance
-            # with table-valued parameters, though it might require specific driver settings.
-            # self._conn.fast_executemany = True # Optional but recommended
-            with self._conn.cursor() as cur:
-                cur.execute(sql, source_id, params)
-            self._conn.commit()
-
-        await self._run_sync(_bulk_insert)
-
-    async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None:
-        """Update url is_target value based on if page contained target data"""
-        if not good_urls and not bad_urls:
-            return
-
-        def _run():
+        def _bulk():
             cur = self._conn.cursor()
-
-            if good_urls:
-                # any url in *good_urls* is definitely still a target
-                cur.executemany(
-                    "UPDATE urls SET is_target = 1 "
-                    "WHERE url_source_id = ? AND url_link = ?",
-                    [(source_id, u) for u in good_urls]
-                )
-            if bad_urls:
-                # pages crawled but produced nothing → toggle off
-                cur.executemany(
-                    "UPDATE urls SET is_target = 0 "
-                    "WHERE url_source_id = ? AND url_link = ?",
-                    [(source_id, u) for u in bad_urls]
-                )
+            cur.fast_executemany = True          # huge speed-up
+            cur.executemany(sql, [(*row, source_id) for row in tvp_rows])
             self._conn.commit()
 
-        await self._run_sync(_run)
-    
-    async def end_run(self, run_id: int):
-        await self._exec(f"EXEC dbo.end_run(?)", run_id)
+        await self._run_sync(_bulk)

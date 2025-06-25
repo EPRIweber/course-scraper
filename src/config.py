@@ -16,9 +16,7 @@ class SourceConfig(BaseModel):
     schema_url: HttpUrl
     include_external: Optional[bool] = False
     crawl_depth: Optional[int] = 5
-    page_timeout_s: Optional[int] = 10
-    word_count_min: Optional[int] = None
-    query: Optional[str] = None
+    page_timeout_s: Optional[int] = 20
     max_concurrency: Optional[int] = 10
 
     class Config:
