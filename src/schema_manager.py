@@ -9,7 +9,7 @@ from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 
 from src.llm_wrapper import LlamaModel, GemmaModel
-from src.prompts.find_repeating import FindRepeating
+from src.prompts.schema import FindRepeating
 from src.scraper import scrape_urls
 
 async def generate_schema(
@@ -33,15 +33,14 @@ async def _generate_schema_from_llm(
     log = logging.getLogger(__name__)
     log.info(f"generating schema using html with {len(html_for_schema)} characters")
     
-    course_prompt: FindRepeating = FindRepeating()
-    course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")
-    course_prompt.set_repeating_block("course_block")
-    course_prompt.set_required_fields(["course_title", "course_description"])
-    course_prompt.set_optional_fields(["course_code"])
-    course_prompt.explicit_fields = True
-    course_prompt.set_target_html(html_for_schema)
-    course_prompt.set_target_json_example(
-        json.dumps([{
+    course_prompt: FindRepeating = FindRepeating(
+        role="You specialize in exacting structured course data from course catalog websites.",
+        repeating_block="course_block",
+        required_fields=["course_title", "course_description"],
+        optional_fields=["course_code"],
+        html=html_for_schema,
+        type="css",
+        target_json_example=json.dumps([{
             "course_title": "Biochemistry",
             "course_description": "Lectures and recitation sections explore the structure and function of biological molecules, including proteins, nucleic acids, carbohydrates, and lipids. Topics include enzyme kinetics, metabolic pathways, and the molecular basis of genetic information.",
             "course_code": "BIOL 0280"
