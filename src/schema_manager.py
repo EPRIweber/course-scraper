@@ -1,5 +1,4 @@
 # src/schema_manager.py
-
 import requests, json, logging
 
 from pydantic import HttpUrl
@@ -8,36 +7,43 @@ from src.config import SourceConfig, ValidationCheck
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 
-from src.llm_wrapper import LlamaModel, GemmaModel
+from src.llm_client import LlamaModel, GemmaModel
 from src.prompts.schema import FindRepeating
 from src.scraper import scrape_urls
 
+REQUIRED_FIELDS = ["course_title", "course_description"]
+OPTIONAL_FIELDS = ["course_code"]
+
 async def generate_schema(
     source: SourceConfig,
-) -> dict:
+) -> tuple[int, dict]:
     log = logging.getLogger(__name__)
+    print("calling helper...")
     schema, usage = await _generate_schema_from_llm(url=source.schema_url)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
 async def _generate_schema_from_llm(
     url: HttpUrl,
-) -> dict:
+) -> tuple[int, dict]:
     """Helper function to perform LLM call."""
+    print(f"getting soup for {url}")
     page = requests.get(url).text
+    print(page)
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.5)
+    pruner = PruningContentFilter(threshold=0.3)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
     log.info(f"generating schema using html with {len(html_for_schema)} characters")
+    print("creating prompt...")
     
-    course_prompt: FindRepeating = FindRepeating(
+    prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
         repeating_block="course_block",
-        required_fields=["course_title", "course_description"],
-        optional_fields=["course_code"],
+        required_fields=REQUIRED_FIELDS,
+        optional_fields=OPTIONAL_FIELDS,
         html=html_for_schema,
         type="css",
         target_json_example=json.dumps([{
@@ -46,21 +52,38 @@ async def _generate_schema_from_llm(
             "course_code": "BIOL 0280"
         }], indent=2)
     )
-    sys_prompt = course_prompt.build_sys_prompt()
-    user_prompt = course_prompt.build_user_prompt()
 
     # TODO: Add to classifier sys prompt
     # The user will provide the title and description for the course
 
     # llm = GemmaModel()
     llm = LlamaModel()
-    system_message = { "role": "system", "content": sys_prompt}
-    user_message = {"role": "user", "content": user_prompt}
+    llm.set_response_format({
+        "type": "json_object",
+        "json_schema": {
+            "name": "CourseExtractionSchema",
+            "description": "CourseExtractionSchema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name":          {"type": "string"},
+                    "baseSelector":  {"type": "string"},
+                    "fields": {
+                        "type":     "array",
+                        "items":    {"type": "object"}
+                    }
+                },
+                "required": ["name", "baseSelector", "fields"]
+            },
+            "strict": True
+        }
+    })
 
-    llm.set_response_format()
-
-    response = llm.chat_completion(
-        messages=[system_message, user_message],
+    response = llm.chat(
+        messages=[
+            {"role":"system", "content": prompt.system()},
+            {"role":"user",   "content": prompt.user()},
+        ],
         max_tokens=30000,
         temperature=0.0
     )
@@ -82,9 +105,7 @@ async def _generate_schema_from_llm(
 
 async def validate_schema(
     schema: dict,
-    source: SourceConfig,
-    *,
-    required_fields: List[str] | None = None
+    source: SourceConfig
 ) -> ValidationCheck:
     """
     Quickly sanity-check a freshly-generated schema against
@@ -98,7 +119,7 @@ async def validate_schema(
     """
     log = logging.getLogger(__name__)
 
-    required_fields = required_fields or ["course_title", "course_description"]
+    required_fields = REQUIRED_FIELDS
     fields_missing: list[str] = []
     errors: list[str] = []
 

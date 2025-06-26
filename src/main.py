@@ -1,5 +1,4 @@
 # src/main.py
-
 import asyncio
 import logging, logging.config
 from logging.config import dictConfigClass
@@ -178,5 +177,12 @@ async def main():
         await storage.end_run(run_id)               # unlock mutex
         logger.info("Run %d completed – lock released.", run_id)
 
+async def testing():
+    test_source = config.sources[0]
+    print("generating test schema...")
+    schema, usage = await generate_schema(test_source)
+    print(schema)
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+    asyncio.run(testing())

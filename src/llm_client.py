@@ -1,6 +1,4 @@
-# src/llm_wrapper.py
-
-import json
+# src/llm_client.py
 import requests
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
@@ -14,7 +12,7 @@ class EPRI_API:
         self.response_format: Dict[str,Any] = {}
  
     @contextmanager
-    def auth(self):
+    def auth_headers(self):
         headers = {
             "Content-Type": "application/json"
         }

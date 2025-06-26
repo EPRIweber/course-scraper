@@ -1,4 +1,4 @@
-# src/classifier.py
+# src/classify_manager.py
 from llm_client import GemmaClient
 from prompts.base import prompt_registry
 import json

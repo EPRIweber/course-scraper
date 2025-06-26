@@ -6,6 +6,7 @@ from .defaults import SCHEMA_BUILDER
 
 @register("find_repeating")
 class FindRepeating(PromptBase):
+    
     def __init__(
             self,
             *,
@@ -74,19 +75,3 @@ Generating this HTML manually is not feasible, so you need to generate the JSON 
 IMPORTANT: Ensure your schema remains reliable by avoiding selectors that appear to generate dynamically and are not dependable. You want a reliable schema, as it consistently returns the same data even after many page reloads.
 Analyze the HTML and generate a JSON schema that follows the specified format. Only output valid JSON schema, nothing else.
 """
-    
-# if __name__ == "__main__":
-#     test = FindRepeating(
-#         role="You specialize in exacting structured course data from course catalog websites.",
-#         repeating_block="course_block",
-#         required_fields=["course_title", "course_description"],
-#         optional_fields=["course_code"],
-#         html=" ",
-#         type="css",
-#         target_json_example=json.dumps([{
-#             "course_title": "Biochemistry",
-#             "course_description": "Lectures and recitation sections explore the structure and function of biological molecules, including proteins, nucleic acids, carbohydrates, and lipids. Topics include enzyme kinetics, metabolic pathways, and the molecular basis of genetic information.",
-#             "course_code": "BIOL 0280"
-#         }], indent=2)
-#     )
-#     print(test.user())
