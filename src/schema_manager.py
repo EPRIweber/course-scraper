@@ -29,7 +29,7 @@ async def _generate_schema_from_llm(
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.3)
+    pruner = PruningContentFilter(threshold=0.4)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ async def _generate_schema_from_llm(
             {"role":"system", "content": prompt.system()},
             {"role":"user",   "content": prompt.user()},
         ],
-        max_tokens=30000,
+        max_tokens=3000,
         temperature=0.0
     )
 

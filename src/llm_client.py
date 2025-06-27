@@ -52,14 +52,18 @@ class BaseLLMClient:
         if top_p is not None:
             params["top_p"] = top_p
         if self.response_format:
-            params.update(self.response_format)
+            params["response_format"] = self.response_format
+
 
         # Send request
         completion = self.client.chat.completions.create(
             **params,
-            stream=stream,
+            stream=stream
         )
-        return completion
+        if stream:
+            return completion
+        return completion.to_dict()
+
 
 
 class GemmaModel(BaseLLMClient):
