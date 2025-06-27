@@ -26,7 +26,7 @@ async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> tuple[int, dict]:
     """Helper function to perform LLM call."""
-    page = requests.get(url).text
+    page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
     pruner = PruningContentFilter(threshold=0.3)
@@ -136,7 +136,7 @@ async def validate_schema(
         else:
             # check that each required field appears at least once
             for field in required_fields:
-                if not any(field in rec and rec[field] for rec in records):
+                if not any(isinstance(rec, dict) and field in rec and rec.get(field) for rec in records):
                     fields_missing.append(field)
 
     except Exception as exc:

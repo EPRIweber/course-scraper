@@ -1,8 +1,8 @@
 # src/main.py
 import asyncio
 import logging, logging.config
-from logging.config import dictConfigClass
 import os
+from typing import Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
 from src.crawler import crawl_and_collect_urls
@@ -12,7 +12,7 @@ from src.schema_manager import generate_schema, validate_schema
 from src.scraper import scrape_urls
 from src.storage import SqlServerStorage, StorageBackend
 
-LOGGING: dictConfigClass  = {
+LOGGING: dict = {
   "version": 1,
   "disable_existing_loggers": False,
   "formatters": {
@@ -42,7 +42,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-def get_storage_backend() -> StorageBackend:
+def get_storage_backend() -> Optional[StorageBackend]:
     try:
         conn_str = (
             f"DRIVER={{ODBC Driver 18 for SQL Server}};"
@@ -59,7 +59,7 @@ def get_storage_backend() -> StorageBackend:
         logger.exception(exc)
         return None
 
-async def process_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> SourceRunResult | None:
+async def process_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
     source_id = await storage.ensure_source(source)
     stage  = Stage.CRAWL
 
@@ -78,7 +78,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
             await storage.save_urls(source_id, filtered)
             urls = filtered
             if not urls:
-                _log(stage, f"ERROR: No URLs found after crawling and filtering")
+                await _log(stage, f"ERROR: No URLs found after crawling and filtering")
                 return
         await _log(stage, f"{len(urls)} urls ready")
 
@@ -87,7 +87,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
         await _log(stage, "fetching / generating schema")
         schema = await storage.get_schema(source_id)
         if not schema.get("baseSelector"):
-            schema, usage = await generate_schema(source)
+            usage, schema = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
             check: ValidationCheck = await validate_schema(
                 schema=schema,
@@ -97,13 +97,14 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
                 await _log(stage, "successfully validated generated schema")
                 await storage.save_schema(source_id, schema)
             else:
-                _log(stage, "ERROR: Invalid schema generated")
+                await _log(stage, "ERROR: Invalid schema generated")
                 if check.fields_missing:
-                    _log(stage, f"Fields Missing: \n{"\n".join(
-                        "- " + field for field in check.fields_missing
-                    )}")
+                    await _log(stage, "Fields Missing: \n" + '\n'.join(
+                        '- ' + field for field in check.fields_missing
+                    ))
                 if check.errors:
-                    _log(stage, f"Validation errors: \n{"\n\n\n".join(check.errors)}")
+                    errors_joined = "\n\n\n".join(check.errors)
+                    await _log(stage, f"Validation errors: \n{errors_joined}")
                 return
         await _log(stage, "schema ready")
 
@@ -116,18 +117,28 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
             await _log(stage, f"no data found, scraping {len(urls)} pages")
             records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
             if json_errors:
-                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{"\n\n\n".join(json_errors)}")
+                joined_json_errors = "\n\n\n".join(json_errors)
+                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
             if not records:
                 await _log(stage, "ERROR: No records extracted from pages")
-                await _log(stage, f"ERROR: Encountered {len(json_errors)} JSON errors: \n{"\n\n\n".join(json_errors)}")
+                joined_json_errors = "\n\n\n".join(json_errors)
+                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
                 return
             await _log(stage, f"{len(records)} records scraped")
 
         # -------- STORAGE -----------------------------------------------
         stage = Stage.STORAGE
         await _log(stage, "writing records to DB")
+        # Ensure records is always a list of dicts
+        if isinstance(records, dict):
+            records = [records]
         await storage.save_data(source_id, records)
         if hasattr(storage, "update_url_targets"):
+            # Ensure good_urls and bad_urls are lists of strings
+            if not isinstance(good_urls, list):
+                good_urls = list(good_urls) if good_urls else []
+            if not isinstance(bad_urls, list):
+                bad_urls = list(bad_urls) if bad_urls else []
             await storage.update_url_targets(
                 source_id=source_id,
                 good_urls=good_urls,

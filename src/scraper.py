@@ -19,11 +19,11 @@ async def scrape_urls(
     urls: List[str],
     schema: Dict[str, Any],
     source: SourceConfig
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], set[str], set[str], list[Any]]:
     records, good_urls, json_errors  = await _scrape_with_schema(
         urls=urls,
         schema=schema,
-        max_concurrency=source.max_concurrency
+        max_concurrency=source.max_concurrency if source.max_concurrency is not None else 5
     )
     bad_urls       = set(urls) - good_urls
     return records, good_urls, bad_urls, json_errors
@@ -32,7 +32,7 @@ async def _scrape_with_schema(
     urls: List[str],
     schema: Dict[str, Any],
     max_concurrency: int,
-) -> List[List[Dict[str, Any]]]:
+) -> tuple[List[Dict[str, Any]], set[str], list[Any]]:
     """
     Apply the JSON-CSS schema to each URL in parallel using arun_many.
     Returns a flat list of all extracted course dicts, each with a "_source_url".
