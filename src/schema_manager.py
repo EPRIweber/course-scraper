@@ -18,7 +18,6 @@ async def generate_schema(
     source: SourceConfig,
 ) -> tuple[int, dict]:
     log = logging.getLogger(__name__)
-    print("calling helper...")
     schema, usage = await _generate_schema_from_llm(url=source.schema_url)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
@@ -27,9 +26,7 @@ async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> tuple[int, dict]:
     """Helper function to perform LLM call."""
-    print(f"getting soup for {url}")
     page = requests.get(url).text
-    print(page)
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
     pruner = PruningContentFilter(threshold=0.3)
@@ -37,7 +34,6 @@ async def _generate_schema_from_llm(
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
     log.info(f"generating schema using html with {len(html_for_schema)} characters")
-    print("creating prompt...")
     
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
