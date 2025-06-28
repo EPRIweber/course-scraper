@@ -11,19 +11,33 @@ from src.models import JobSummary
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
     @abstractmethod
-    async def get_urls(self, source: str) -> List[str]: ...
+    async def log(self, run_id: int, src_id: str, stage: int, msg: str) -> None: ...
     @abstractmethod
-    async def save_urls(self, source: str, urls: List[str]) -> None: ...
+    async def begin_run(self) -> int: ...
+    @abstractmethod
+    async def end_run(self, run_id: int) -> None: ...
 
     @abstractmethod
-    async def get_schema(self, source: str) -> Dict[str, Any]: ...
+    async def list_sources(self) -> list[SourceConfig]: ...
     @abstractmethod
-    async def save_schema(self, source: str, schema: Dict[str, Any]) -> None: ...
+    async def ensure_source(self, src_cfg: SourceConfig) -> str: ...
 
     @abstractmethod
-    async def get_data(self, source: str) -> List[Dict[str, Any]]: ...
+    async def get_urls(self, source_id: str) -> List[str]: ...
     @abstractmethod
-    async def save_data(self, source: str, data: List[Dict[str, Any]]) -> None: ...
+    async def save_urls(self, source_id: str, urls: List[str]) -> None: ...
+    @abstractmethod
+    async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None: ...
+
+    @abstractmethod
+    async def get_schema(self, source_id: str) -> Dict[str, Any]: ...
+    @abstractmethod
+    async def save_schema(self, source_id: str, schema: Dict[str, Any]) -> None: ...
+
+    @abstractmethod
+    async def get_data(self, source_id: str) -> List[Dict[str, Any]]: ...
+    @abstractmethod
+    async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None: ...
 
 class SqlServerStorage(StorageBackend):
     # ------------------------------------------------------------------ init
@@ -93,6 +107,8 @@ class SqlServerStorage(StorageBackend):
             src_cfg.page_timeout_s,
             src_cfg.max_concurrency
         )
+        if not row or not hasattr(row[0], "source_id"):
+            raise RuntimeError("Failed to fetch or insert source; no source_id returned.")
         return row[0].source_id
 
     async def list_sources(self) -> list[SourceConfig]:
@@ -127,6 +143,8 @@ class SqlServerStorage(StorageBackend):
     async def get_urls(self, source_id: str) -> List[str]:
         """Fetch URLs for a source that are marked as targets."""
         rows = await self._fetch("{CALL dbo.get_target_urls(?)}", source_id)
+        if not rows:
+            return []
         return [r.url_link for r in rows]
 
     async def save_urls(self, source_id: str, urls: Sequence[str]) -> None:
@@ -202,6 +220,8 @@ class SqlServerStorage(StorageBackend):
         rows = await self._fetch("{CALL dbo.get_data(?)}", source_id)
 
         # The logic for processing the results remains unchanged.
+        if not rows:
+            return []
         return [
             {
                 "course_code": r.course_code,
