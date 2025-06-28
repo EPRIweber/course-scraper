@@ -1,12 +1,15 @@
 # src/prompts/base.py
-class PromptBase:
-    sys_template: str
-    user_template: str
+from abc import ABC, abstractmethod
+prompt_registry: dict[str, type] = {}
 
-    def render_sys(self, **kwargs) -> str:
-        """Simple .format() wrapper so subclasses only build kwargs."""
-        return self.sys_template.format(**kwargs)
+class PromptBase(ABC):
+    @abstractmethod
+    def system(self) -> str: ...
+    @abstractmethod
+    def user(self)   -> str: ...
 
-    def render_user(self, **kwargs) -> str:
-        """Simple .format() wrapper so subclasses only build kwargs."""
-        return self.user_template.format(**kwargs)
+def register(name: str):
+    def deco(cls):
+        prompt_registry[name] = cls
+        return cls
+    return deco

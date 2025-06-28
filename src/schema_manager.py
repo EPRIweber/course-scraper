@@ -1,5 +1,4 @@
 # src/schema_manager.py
-
 import requests, json, logging
 
 from pydantic import HttpUrl
@@ -8,18 +7,16 @@ from src.config import SourceConfig, ValidationCheck
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from bs4 import BeautifulSoup
 
-from src.llm_wrapper import LlamaModel, GemmaModel
-from src.prompts.find_repeating import FindRepeating
+from src.llm_client import LlamaModel, GemmaModel
+from src.prompts.schema import FindRepeating
 from src.scraper import scrape_urls
 
-GEMMA="google/gemma-3-27b-it"
-GEMMA_URL="http://epr-ai-lno-p01.epri.com:8000"
-LLAMA="meta/llama-3.2-90b-vision-instruct"
-LLAMA_URL="http://epr-ai-lno-p01.epri.com:8002"
+REQUIRED_FIELDS = ["course_title", "course_description"]
+OPTIONAL_FIELDS = ["course_code"]
 
 async def generate_schema(
     source: SourceConfig,
-) -> dict:
+) -> tuple[int, dict]:
     log = logging.getLogger(__name__)
     schema, usage = await _generate_schema_from_llm(url=source.schema_url)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
@@ -27,66 +24,64 @@ async def generate_schema(
 
 async def _generate_schema_from_llm(
     url: HttpUrl,
-) -> dict:
-    """Helper function to perform the actual LLM call to Gemini."""
-    page = requests.get(url).text
+) -> tuple[int, dict]:
+    """Helper function to perform LLM call."""
+    page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.5)
+    pruner = PruningContentFilter(threshold=0.4)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
     log.info(f"generating schema using html with {len(html_for_schema)} characters")
     
-    course_prompt: FindRepeating = FindRepeating()
-    course_prompt.set_role("You specialize in exacting structured course data from course catalog websites.")
-    course_prompt.set_repeating_block("course_block")
-    course_prompt.set_required_fields(["course_title", "course_description"])
-    course_prompt.set_optional_fields(["course_code"])
-    course_prompt.explicit_fields = True
-    course_prompt.set_target_html(html_for_schema)
-    course_prompt.set_target_json_example(
-        json.dumps([{
+    prompt: FindRepeating = FindRepeating(
+        role="You specialize in exacting structured course data from course catalog websites.",
+        repeating_block="course_block",
+        required_fields=REQUIRED_FIELDS,
+        optional_fields=OPTIONAL_FIELDS,
+        html=html_for_schema,
+        type="css",
+        target_json_example=json.dumps([{
             "course_title": "Biochemistry",
             "course_description": "Lectures and recitation sections explore the structure and function of biological molecules, including proteins, nucleic acids, carbohydrates, and lipids. Topics include enzyme kinetics, metabolic pathways, and the molecular basis of genetic information.",
             "course_code": "BIOL 0280"
         }], indent=2)
     )
-    sys_prompt = course_prompt.build_sys_prompt()
-    user_prompt = course_prompt.build_user_prompt()
 
     # TODO: Add to classifier sys prompt
     # The user will provide the title and description for the course
 
-    llm = GemmaModel(api_url=GEMMA_URL)
-    system_message = { "role": "system", "content": sys_prompt}
-    user_message = {"role": "user", "content": user_prompt}
-
-    response = llm.chat_completion(
-        model=GEMMA,
-        messages=[system_message, user_message],
-        max_tokens=30000,
-        temperature=0.0,
-        response_format={
-            "type": "json_object",
-            "json_schema": {
-                "name": "CourseExtractionSchema",
-                "description": "Schema for extracting structured course data from course catalog websites.",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "name":          {"type": "string"},
-                        "baseSelector":  {"type": "string"},
-                        "fields": {
-                            "type":     "array",
-                            "items":    {"type": "object"}
-                        }
-                    },
-                    "required": ["name", "baseSelector", "fields"]
+    # llm = GemmaModel()
+    llm = LlamaModel()
+    llm.set_response_format({
+        "type": "json_object",
+        "json_schema": {
+            "name": "CourseExtractionSchema",
+            "description": "CourseExtractionSchema",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name":          {"type": "string"},
+                    "baseSelector":  {"type": "string"},
+                    "fields": {
+                        "type":     "array",
+                        "items":    {"type": "object"}
+                    }
                 },
-                "strict": True
-            }
+                "required": ["name", "baseSelector", "fields"]
+            },
+            "strict": True
         }
+    })
+
+    response = llm.chat(
+        messages=[
+            {"role":"system", "content": prompt.system()},
+            {"role":"user",   "content": prompt.user()},
+        ],
+        max_tokens=3000,
+        temperature=0.0
     )
 
     content = response["choices"][0]["message"]["content"]
@@ -97,7 +92,7 @@ async def _generate_schema_from_llm(
         else:
             raise ValueError("LLM returned an array; expected a single schema object")
 
-    usage   = response.get("usage", {})
+    usage = response.get("usage", {})
 
     try:
         return obj, usage
@@ -106,9 +101,7 @@ async def _generate_schema_from_llm(
 
 async def validate_schema(
     schema: dict,
-    source: SourceConfig,
-    *,
-    required_fields: List[str] | None = None
+    source: SourceConfig
 ) -> ValidationCheck:
     """
     Quickly sanity-check a freshly-generated schema against
@@ -122,7 +115,7 @@ async def validate_schema(
     """
     log = logging.getLogger(__name__)
 
-    required_fields = required_fields or ["course_title", "course_description"]
+    required_fields = REQUIRED_FIELDS
     fields_missing: list[str] = []
     errors: list[str] = []
 
@@ -143,7 +136,7 @@ async def validate_schema(
         else:
             # check that each required field appears at least once
             for field in required_fields:
-                if not any(field in rec and rec[field] for rec in records):
+                if not any(isinstance(rec, dict) and field in rec and rec.get(field) for rec in records):
                     fields_missing.append(field)
 
     except Exception as exc:
