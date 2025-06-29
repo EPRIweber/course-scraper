@@ -195,5 +195,5 @@ async def testing():
     print(schema)
 
 if __name__ == "__main__":
-    # asyncio.run(main())
-    asyncio.run(testing())
+    asyncio.run(main())
+    # asyncio.run(testing())
