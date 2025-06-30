@@ -80,7 +80,7 @@ async def _generate_schema_from_llm(
             {"role":"system", "content": prompt.system()},
             {"role":"user",   "content": prompt.user()},
         ],
-        max_tokens=3000,
+        max_tokens=30000,
         temperature=0.0
     )
 

@@ -58,10 +58,49 @@ def get_storage_backend() -> Optional[StorageBackend]:
     except Exception as exc:
         logger.exception(exc)
         return None
+        
+async def process_schema(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
+    source_id = await storage.ensure_source(source)
+    stage: Stage = Stage.SCHEMA
+
+    async def _log(st: Stage, msd: str):
+        logger.info(f"[{source.name}] {msd}")
+        await storage.log(run_id, source_id, int(st), msd)
+    
+    await _log(stage, "RUNNING ONLY PROCESS_SCHEMA")
+
+    try:
+        await _log(stage, "fetching / generating schema")
+        # schema = await storage.get_schema(source_id)
+        schema = None
+        if (not schema) or (not schema.get("baseSelector")):
+            schema, usage = await generate_schema(source)
+            await _log(stage, f"generated schema with {usage} tokens")
+            check: ValidationCheck = await validate_schema(
+                schema=schema,
+                source=source
+            )
+            if check.valid:
+                await _log(stage, "successfully validated generated schema")
+                await storage.save_schema(source_id, schema)
+            else:
+                await _log(stage, "ERROR: Invalid schema generated")
+                if check.fields_missing:
+                    await _log(stage, "Fields Missing: \n" + '\n'.join(
+                        '- ' + field for field in check.fields_missing
+                    ))
+                if check.errors:
+                    errors_joined = "\n\n\n".join(check.errors)
+                    await _log(stage, f"Validation errors: \n{errors_joined}")
+                return
+        await _log(stage, "schema ready")
+    except Exception as exc:
+        await _log(stage, f"FAILED: {exc}")
+        logger.exception(exc)
 
 async def process_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
     source_id = await storage.ensure_source(source)
-    stage  = Stage.CRAWL
+    stage: Stage = Stage.CRAWL
 
     async def _log(st: Stage, msg: str):
         logger.info(f"[{source.name}] {msg}")
@@ -69,7 +108,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
 
     try:
         # -------- CRAWL -------------------------------------------------
-        stage = Stage.CRAWL
+        stage: Stage = Stage.CRAWL
         await _log(stage, "starting crawl")
         urls = await storage.get_urls(source_id)
         if not urls:
@@ -87,7 +126,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
         await _log(stage, "fetching / generating schema")
         schema = await storage.get_schema(source_id)
         if not schema.get("baseSelector"):
-            usage, schema = await generate_schema(source)
+            schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
             check: ValidationCheck = await validate_schema(
                 schema=schema,
@@ -172,14 +211,16 @@ async def main():
 
     try:
         # 1.  Pull sources from DB; if table is empty, fall back to YAML list
-        sources = await storage.list_sources()
+        # sources = await storage.list_sources()
+        sources = None
         if not sources:
             logger.warning("No sources in DB – falling back to YAML config.")
             sources = config.sources
 
         # 2.  Kick off scraping tasks
-        tasks = [process_source(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks)                # storage passed inside
+        # tasks = [process_source(run_id, src, storage) for src in sources]
+        tasks = [process_schema(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks, return_exceptions=False)
 
     except Exception as exc:
         logger.exception("Critical error in run %d: %s", run_id, exc)

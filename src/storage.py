@@ -43,6 +43,7 @@ class SqlServerStorage(StorageBackend):
     # ------------------------------------------------------------------ init
     def __init__(self, connect_str: str): # , loop: asyncio.AbstractEventLoop | None = None):
         self._conn = pyodbc.connect(connect_str, autocommit=False)
+        self._lock = asyncio.Lock()
         self._loop = None # loop or asyncio.get_event_loop()
 
     # ---------------------------------------------------------------- helpers
@@ -53,29 +54,31 @@ class SqlServerStorage(StorageBackend):
 
     # async DB helpers
     async def _exec(self, sql: str, *p):
-        for attempt in range(2):
-            try:
-                await self._run_sync(lambda: self._conn.execute(sql, *p).commit())
-                return
-            except pyodbc.Error as e:
-                if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
-                    # Communication link failure / timeout → reconnect once
-                    self._conn.close()
-                    self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
-                    continue
-                raise
+        async with self._lock:
+            for attempt in range(2):
+                try:
+                    await self._run_sync(lambda: self._conn.execute(sql, *p).commit())
+                    return
+                except pyodbc.Error as e:
+                    if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
+                        # Communication link failure / timeout → reconnect once
+                        self._conn.close()
+                        self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
+                        continue
+                    raise
 
 
     async def _fetch(self, sql: str, *p):
-        for attempt in range(2):
-            try:
-                return await self._run_sync(lambda: self._conn.execute(sql, *p).fetchall())
-            except pyodbc.Error as e:
-                if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
-                    self._conn.close()
-                    self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
-                    continue
-                raise
+        async with self._lock:
+            for attempt in range(2):
+                try:
+                    return await self._run_sync(lambda: self._conn.execute(sql, *p).fetchall())
+                except pyodbc.Error as e:
+                    if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
+                        self._conn.close()
+                        self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
+                        continue
+                    raise
 
 
     # ------------------------------------------------------------------- runs

@@ -64,6 +64,13 @@ async def _scrape_with_schema(
     # 3) Parse out each page's JSON payload
     for page_result in results:
         raw = page_result.extracted_content
+
+        if not raw:
+            log.error(f"No extracted content from {page_result.url}")
+            json_errors.append(f"No extracted content from {page_result.url}")
+            continue
+
+
         try:
             items = json.loads(raw)
         except json.JSONDecodeError:
