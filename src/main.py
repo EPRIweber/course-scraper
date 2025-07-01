@@ -64,13 +64,13 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
 
     async def _log(st: Stage, msd: str):
         logger.info(f"[{source.name}] {msd}")
-        await storage.log(run_id, source_id, int(st), msd)
+        await storage.log(run_id, source.source_id, int(st), msd)
     
     await _log(stage, "RUNNING ONLY PROCESS_SCHEMA")
 
     try:
         await _log(stage, "fetching / generating schema")
-        schema = await storage.get_schema(source_id)
+        schema = await storage.get_schema(source.source_id)
         # schema = None
         if (not schema) or (not schema.get("baseSelector")):
             schema, usage = await generate_schema(source)
@@ -81,7 +81,7 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
             )
             if check.valid:
                 await _log(stage, "successfully validated generated schema")
-                await storage.save_schema(source_id, schema)
+                await storage.save_schema(source.source_id, schema)
             else:
                 await _log(stage, "ERROR: Invalid schema generated")
                 if check.fields_missing:
@@ -102,17 +102,17 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
 
     async def _log(st: Stage, msg: str):
         logger.info(f"[{source.name}] {msg}")
-        await storage.log(run_id, source_id, int(st), msg)
+        await storage.log(run_id, source.source_id, int(st), msg)
 
     try:
         # -------- CRAWL -------------------------------------------------
         stage: Stage = Stage.CRAWL
         await _log(stage, "starting crawl")
-        urls = await storage.get_urls(source_id)
+        urls = await storage.get_urls(source.source_id)
         if not urls:
             crawled = await crawl_and_collect_urls(source)
             filtered = await prefilter_urls(crawled, source)
-            await storage.save_urls(source_id, filtered)
+            await storage.save_urls(source.source_id, filtered)
             urls = filtered
             if not urls:
                 await _log(stage, f"ERROR: No URLs found after crawling and filtering")
@@ -122,7 +122,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
         # -------- SCHEMA ------------------------------------------------
         stage = Stage.SCHEMA
         await _log(stage, "fetching / generating schema")
-        schema = await storage.get_schema(source_id)
+        schema = await storage.get_schema(source.source_id)
         if not schema.get("baseSelector"):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
@@ -132,7 +132,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
             )
             if check.valid:
                 await _log(stage, "successfully validated generated schema")
-                await storage.save_schema(source_id, schema)
+                await storage.save_schema(source.source_id, schema)
             else:
                 await _log(stage, "ERROR: Invalid schema generated")
                 if check.fields_missing:
@@ -149,7 +149,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
         stage = Stage.SCRAPE
         good_urls, bad_urls = [], []
         await _log(stage, f"attempting to get data...")
-        records = await storage.get_data(source_id)
+        records = await storage.get_data(source.source_id)
         if not records:
             await _log(stage, f"no data found, scraping {len(urls)} pages")
             records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
@@ -169,7 +169,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
         # Ensure records is always a list of dicts
         if isinstance(records, dict):
             records = [records]
-        await storage.save_data(source_id, records)
+        await storage.save_data(source.source_id, records)
         if hasattr(storage, "update_url_targets"):
             # Ensure good_urls and bad_urls are lists of strings
             if not isinstance(good_urls, list):
@@ -177,7 +177,7 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
             if not isinstance(bad_urls, list):
                 bad_urls = list(bad_urls) if bad_urls else []
             await storage.update_url_targets(
-                source_id=source_id,
+                source_id=source.source_id,
                 good_urls=good_urls,
                 bad_urls=bad_urls
             )

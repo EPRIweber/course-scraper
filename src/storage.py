@@ -125,6 +125,7 @@ class SqlServerStorage(StorageBackend):
             return []
         return [
             SourceConfig(
+                source_id=r.source_id
                 name=r.name,
                 type=r.type,
                 root_url=r.root_url,

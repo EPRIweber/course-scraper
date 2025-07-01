@@ -10,6 +10,7 @@ class SourceConfig(BaseModel):
     """
     Configuration for a single data source (school).
     """
+    source_id: str = None
     name: str
     type: str = "html"
     root_url: HttpUrl
