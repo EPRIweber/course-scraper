@@ -10,7 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 # Crawl4AI imports
-from crawl4ai.crawl_runner import CrawlRunner
+from crawl4ai import CrawlRunner
 from crawl4ai.crawler.strategy.playwright import AsyncPlaywrightCrawlerStrategy
 
 from .config import SourceConfig
