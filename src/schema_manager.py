@@ -12,7 +12,7 @@ from src.prompts.schema import FindRepeating
 from src.scraper import scrape_urls
 
 REQUIRED_FIELDS = ["course_title", "course_description"]
-OPTIONAL_FIELDS = ["course_code"]
+OPTIONAL_FIELDS = ["course_code", "course_credits"]
 
 async def generate_schema(
     source: SourceConfig,
@@ -33,7 +33,7 @@ async def _generate_schema_from_llm(
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
-    log.info(f"generating schema using html with {len(html_for_schema)} characters")
+    log.info(f"generating schema for using html with {len(html_for_schema)} characters from {url}")
     
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",

@@ -5,7 +5,7 @@ import pyodbc
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Sequence
 
-from src.config import SourceConfig
+from src.config import SourceConfig, config
 from src.models import JobSummary
 
 class StorageBackend(ABC):
@@ -115,7 +115,11 @@ class SqlServerStorage(StorageBackend):
         return row[0].source_id
 
     async def list_sources(self) -> list[SourceConfig]:
-        """Return *enabled* sources from DB (fallback to YAML handled in main)."""
+        """Pulls sources from local yaml file, upserts to DB, returns all enabled sources from database."""
+        local_sources = config.sources
+
+        await asyncio.gather(*(self.ensure_source(src) for src in local_sources))
+
         rows = await self._fetch("EXEC dbo.get_enabled_sources")
         if not rows:
             return []

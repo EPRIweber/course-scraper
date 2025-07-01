@@ -99,7 +99,6 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         logger.exception(exc)
 
 async def process_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
-    source_id = await storage.ensure_source(source)
     stage: Stage = Stage.CRAWL
 
     async def _log(st: Stage, msg: str):

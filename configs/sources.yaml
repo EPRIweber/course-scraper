@@ -4,53 +4,68 @@ sources:
   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
   type: "html"
   crawl_depth: 3
+
 - name: massachusetts_institute_of_technology
-  root_url: https://catalog.mit.edu/            # MIT undergraduate catalog homepage :contentReference[oaicite:0]{index=0}
-  schema_url: https://catalog.mit.edu/subjects/8/  # Example: Physics (Course 8) listing :contentReference[oaicite:1]{index=1}
+  root_url: https://catalog.mit.edu/
+  schema_url: https://catalog.mit.edu/search/?P=4.023
   type: "html"
-  crawl_depth: 3
-- name: purdue_university
-  root_url: https://catalog.purdue.edu/          # Purdue catalog homepage :contentReference[oaicite:2]{index=2}
-  schema_url: https://catalog.purdue.edu/preview_entity.php?catoid=8&ent_oid=2384  # Example department page :contentReference[oaicite:3]{index=3}
-  type: "html"
-  crawl_depth: 3
+  crawl_depth: 8
+
+# - name: purdue_university
+#   root_url: https://catalog.purdue.edu/content.php?catoid=7&navoid=2928
+#   schema_url: https://catalog.purdue.edu/preview_course_nopop.php?catoid=7&coid=50181
+#   type: "html"
+#   crawl_depth: 80
+#   include_external: True
+
 - name: yale_university
-  root_url: https://catalog.yale.edu/            # Yale course catalog root :contentReference[oaicite:4]{index=4}
-  schema_url: https://catalog.yale.edu/ycps/key-to-course-listings/  # Key to Course Listings :contentReference[oaicite:5]{index=5}
+  root_url: https://catalog.yale.edu/ycps/courses/
+  schema_url: https://catalog.yale.edu/ycps/courses/cpsc/
   type: "html"
   crawl_depth: 3
-- name: florida_state_university
-  root_url: https://catalog.fsu.edu/             # FSU catalog homepage 
-  schema_url: https://catalog.fsu.edu/preview_course.php?catoid=24&coid=26268  # Example course page 
-  type: "html"
-  crawl_depth: 3
-- name: duke_university
-  root_url: https://bulletin.duke.edu/           # Duke University Bulletin root 
-  schema_url: https://bulletin.duke.edu/undergraduate/courses/ecs/  # Example: Engineering courses 
-  type: "html"
-  crawl_depth: 3
-- name: rice_university
-  root_url: https://catalog.rice.edu/            # Rice University catalog root 
-  schema_url: https://catalog.rice.edu/undergraduate-catalog/physics/  # Example: Physics department 
-  type: "html"
-  crawl_depth: 3
+
+
+# CAN REQUEST FOR COURSES DIRECTLY IF NEEDED
+# - name: florida_state_university
+#   root_url: https://catalog.fsu.edu/             # FSU catalog homepage 
+#   schema_url: https://catalog.fsu.edu/preview_course.php?catoid=24&coid=26268  # Example course page 
+#   type: "html"
+#   crawl_depth: 3
+
+# - name: duke_university
+#   root_url: https://registrar.duke.edu/bulletins/
+#   schema_url: https://undergraduate.bulletins.duke.edu/courses/0292481
+#   type: "html"
+#   crawl_depth: 500
+
+# - name: rice_university
+#   root_url: https://courses.rice.edu/courses/!SWKSCAT.cat?p_action=CATALIST&p_acyr_code=2025
+#   schema_url: https://courses.rice.edu/courses/!SWKSCAT.cat?p_action=CATALIST&p_acyr_code=2025&p_crse_numb=110&p_subj=AAAS
+#   type: "html"
+#   crawl_depth: 2
+#   include_external: True
+
 - name: university_of_florida
-  root_url: https://catalog.ufl.edu/             # University of Florida catalog root 
-  schema_url: https://catalog.ufl.edu/UGRD/courses/COP/?docType=UGRD  # Example: Computer & Info Science courses 
+  root_url: https://catalog.ufl.edu/
+  schema_url: https://catalog.ufl.edu/UGRD/courses/african_american_studies/
   type: "html"
-  crawl_depth: 3
+  crawl_depth: 4
+
 - name: texas_a_and_m_university
-  root_url: https://catalog.tamu.edu/            # Texas A&M catalog root 
-  schema_url: https://catalog.tamu.edu/undergraduate/courses/che/  # Example: Chemical Engineering 
+  root_url: https://catalog.tamu.edu/
+  schema_url: https://catalog.tamu.edu/undergraduate/business/management/#coursestext
   type: "html"
-  crawl_depth: 3
+  crawl_depth: 5
+
 - name: iowa_state_university
-  root_url: https://catalog.iastate.edu/         # Iowa State catalog homepage 
-  schema_url: https://catalog.iastate.edu/preview_course.php?catoid=31&coid=162834  # Example: Computer Science 
+  root_url: https://catalog.iastate.edu/
+  schema_url: https://catalog.iastate.edu/azcourses/acct/
   type: "html"
   crawl_depth: 3
-- name: university_of_minnesota_twin_cities
-  root_url: https://catalogs.umn.edu/            # UMN Twin Cities catalog root 
-  schema_url: https://catalogs.umn.edu/courses/csci  # Example: Computer Science listing 
-  type: "html"
-  crawl_depth: 3
+
+# - name: university_of_minnesota_twin_cities
+#   root_url: https://catalogs.umn.edu/
+#   schema_url: https://umc.catalog.prod.coursedog.com/courses?page=1&cq=
+#   type: "html"
+#   crawl_depth: 3
+#   include_external: True
