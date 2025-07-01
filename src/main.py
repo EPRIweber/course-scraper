@@ -71,8 +71,8 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
 
     try:
         await _log(stage, "fetching / generating schema")
-        # schema = await storage.get_schema(source_id)
-        schema = None
+        schema = await storage.get_schema(source_id)
+        # schema = None
         if (not schema) or (not schema.get("baseSelector")):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
@@ -211,8 +211,8 @@ async def main():
 
     try:
         # 1.  Pull sources from DB; if table is empty, fall back to YAML list
-        # sources = await storage.list_sources()
-        sources = None
+        sources = await storage.list_sources()
+        # sources = None
         if not sources:
             logger.warning("No sources in DB – falling back to YAML config.")
             sources = config.sources
