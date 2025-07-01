@@ -237,8 +237,9 @@ async def main():
         sources = await storage.list_sources()
 
         # 2.  Kick off scraping tasks
-        tasks = [process_source(run_id, src, storage) for src in sources]
+        # tasks = [process_source(run_id, src, storage) for src in sources]
         # tasks = [process_schema(run_id, src, storage) for src in sources]
+        tasks = [process_crawl(run_id, src, storage) for src in sources]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as exc:

@@ -16,7 +16,7 @@ OPTIONAL_FIELDS = ["course_code", "course_credits"]
 
 async def generate_schema(
     source: SourceConfig,
-) -> tuple[int, dict]:
+) -> tuple[dict, int]:
     log = logging.getLogger(__name__)
     schema, usage = await _generate_schema_from_llm(url=source.schema_url)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
@@ -24,7 +24,7 @@ async def generate_schema(
 
 async def _generate_schema_from_llm(
     url: HttpUrl,
-) -> tuple[int, dict]:
+) -> tuple[dict, int]:
     """Helper function to perform LLM call."""
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
