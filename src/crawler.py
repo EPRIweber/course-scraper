@@ -48,7 +48,7 @@ async def _static_bfs_crawl(
     domain = start.netloc
     root_path  = (start.path.rstrip("/") + "/") if start.path else "/"
     exclude_filter = ExcludePatternFilter([
-        r"/pdf/", r"\.pdf$", r"/archive/", r"/search/", r"\.jpg$", r"\.png$", r"\.gif$"
+        r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"
     ])
 
     def _inside_start_path(u: str) -> bool:

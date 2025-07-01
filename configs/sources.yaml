@@ -22,7 +22,7 @@ sources:
   root_url: https://catalog.yale.edu/ycps/courses/
   schema_url: https://catalog.yale.edu/ycps/courses/cpsc/
   type: "html"
-  crawl_depth: 3
+  crawl_depth: 4
 
 
 # CAN REQUEST FOR COURSES DIRECTLY IF NEEDED

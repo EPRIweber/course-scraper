@@ -60,7 +60,6 @@ def get_storage_backend() -> Optional[StorageBackend]:
         return None
         
 async def process_schema(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
-    source_id = await storage.ensure_source(source)
     stage: Stage = Stage.SCHEMA
 
     async def _log(st: Stage, msd: str):

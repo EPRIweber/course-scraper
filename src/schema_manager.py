@@ -45,7 +45,8 @@ async def _generate_schema_from_llm(
         target_json_example=json.dumps([{
             "course_title": "Biochemistry",
             "course_description": "Lectures and recitation sections explore the structure and function of biological molecules, including proteins, nucleic acids, carbohydrates, and lipids. Topics include enzyme kinetics, metabolic pathways, and the molecular basis of genetic information.",
-            "course_code": "BIOL 0280"
+            "course_code": "BIOL 0280",
+            "course_credits": "4 Credits"
         }], indent=2)
     )
 
