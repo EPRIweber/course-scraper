@@ -10,7 +10,7 @@ class SourceConfig(BaseModel):
     """
     Configuration for a single data source (school).
     """
-    source_id: str = None
+    source_id: str
     name: str
     type: str = "html"
     root_url: HttpUrl
@@ -38,6 +38,8 @@ try:
     config_path = Path(__file__).parent.parent / "configs/sources.yaml"
     with open(config_path, "r") as f:
         raw = yaml.safe_load(f)
+    for src in raw.get("sources", []):
+        src.setdefault("source_id", f"LOCAL_{src['name']}")
     config = AppConfig(**raw)
 except FileNotFoundError:
     raise FileNotFoundError(f"Configuration file not found at {config_path}. Make sure sources.yaml is in the project root.")

@@ -123,9 +123,10 @@ class SqlServerStorage(StorageBackend):
         rows = await self._fetch("EXEC dbo.get_enabled_sources")
         if not rows:
             return []
+            
         return [
             SourceConfig(
-                source_id=r.source_id
+                source_id=r.source_id,
                 name=r.name,
                 type=r.type,
                 root_url=r.root_url,

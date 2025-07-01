@@ -208,17 +208,13 @@ async def main():
     logger.info("Run ID: %d", run_id)
 
     try:
-        # 1.  Pull sources from DB; if table is empty, fall back to YAML list
+        # 1.  Pull sources from DB and local YAML file
         sources = await storage.list_sources()
-        # sources = None
-        if not sources:
-            logger.warning("No sources in DB – falling back to YAML config.")
-            sources = config.sources
 
         # 2.  Kick off scraping tasks
         # tasks = [process_source(run_id, src, storage) for src in sources]
         tasks = [process_schema(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks, return_exceptions=False)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as exc:
         logger.exception("Critical error in run %d: %s", run_id, exc)

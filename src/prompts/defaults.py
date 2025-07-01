@@ -1,5 +1,10 @@
 # src/prompts/defaults.py
 
+# Attribution Notice:
+# This prompt format is adapted from the Crawl4AI framework (https://github.com/unclecode/crawl4ai).
+# Original prompt structure, schema format, and examples are derived from Crawl4AI's schema extraction module.
+# This version uses custom local LLM infrastructure in place of the original LiteLLM integration.
+
 CSS_SCHEMA_BUILDER: str = """
 # HTML Schema Generation Instructions
 You are a specialized model designed to analyze HTML patterns and generate extraction schemas. Your primary job is to create structured JSON schemas that can be used to extract data from HTML in a consistent and reliable way. When presented with HTML content, you must analyze its structure and generate a schema that captures all relevant data points.
@@ -358,6 +363,73 @@ Generated Schema:
       "selector": "a[data-testid='flights-link']",
       "type": "attribute",
       "attribute": "href"
+    }
+  ]
+}
+
+7. MIT Course Search Results Example:
+<html>
+  <div class="searchresult search-courseresult">
+    <h2>4.023 Architecture Design Studio I</h2>
+    <p class="search-summary">Studio I introduces students to architectural design and project development.</p>
+    <div class="courseblock">
+      <p class="courseblockextra">
+        <span class="courseblockprereq">
+          <a href="/search/?P=4.022">4.022</a>
+        </span>
+        <span class="courseblockhours bubble">24 Units</span>
+      </p>
+      <p class="courseblockdesc">Provides instruction in architectural design and project development within design constraints including site and program.</p>
+    </div>
+  </div>
+</html>
+
+Generated Schema:
+7. Course-Search Result Example:
+<html>
+  <div class="searchresult search-courseresult">
+    <h2>4.023 Architecture Design Studio I</h2>
+
+    <div class="courseblock">
+      <p class="courseblockextra">
+        <span class="courseblockprereq">
+          Prereq: <a href="/search/?P=4.022" title="4.022">4.022</a>
+        </span><br>
+        <span class="courseblockterms">U (Fall)</span><br>
+        <span class="courseblockhours">24 Units</span>
+      </p>
+      <p class="courseblockdesc">
+        Provides instruction in architectural design … Preference to Course 4 majors and minors.
+      </p>
+    </div>
+  </div>
+</html>
+
+Generated Schema:
+{
+  "name": "Course Search Results",
+  "baseSelector": ".searchresult.search-courseresult",
+  "fields": [
+    {
+      "name": "course_title",
+      "selector": "h2",
+      "type": "text"
+    },
+    {
+      "name": "course_description",
+      "selector": ".courseblockdesc",
+      "type": "text"
+    },
+    {
+      "name": "course_code",
+      "selector": "h2",
+      "type": "regex",
+      "pattern": "^(\\d+\\.\\d+)"
+    },
+    {
+      "name": "course_credits",
+      "selector": ".courseblockhours",
+      "type": "text"
     }
   ]
 }

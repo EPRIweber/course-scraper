@@ -72,6 +72,8 @@ Generating this HTML manually is not feasible, so you need to generate the JSON 
 {self.json_description}
 
 
-IMPORTANT: Ensure your schema remains reliable by avoiding selectors that appear to generate dynamically and are not dependable. You want a reliable schema, as it consistently returns the same data even after many page reloads.
-Analyze the HTML and generate a JSON schema that follows the specified format. Only output valid JSON schema, nothing else.
+IMPORTANT SELF-CHECK:
+- **Selector reliability:** Ensure your schema remains reliable by avoiding selectors that appear to generate dynamically and are not dependable. You want a reliable schema, as it consistently returns the same data even after many page reloads.
+- **Scoped matching:** Verify that all child fields of the baseSelector are actually contained inside of the base selector, ensuring that document.querySelectorAll(baseSelector + ' ' + selector) returns at least one element.
+- **Strict output:** Return a JSON schema that follows the specified format precisely. Only output valid JSON schema, no explanatory text.
 """

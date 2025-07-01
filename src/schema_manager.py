@@ -29,7 +29,7 @@ async def _generate_schema_from_llm(
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.4)
+    pruner = PruningContentFilter(threshold=0.25)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)
@@ -50,9 +50,6 @@ async def _generate_schema_from_llm(
         }], indent=2)
     )
 
-    # TODO: Add to classifier sys prompt
-    # The user will provide the title and description for the course
-
     # llm = GemmaModel()
     llm = LlamaModel()
     llm.set_response_format({
@@ -65,6 +62,10 @@ async def _generate_schema_from_llm(
                 "properties": {
                     "name":          {"type": "string"},
                     "baseSelector":  {"type": "string"},
+                    "baseFields": {
+                        "type":     "array",
+                        "items":    {"type": "object"}
+                    },
                     "fields": {
                         "type":     "array",
                         "items":    {"type": "object"}
@@ -150,3 +151,13 @@ async def validate_schema(
         fields_missing=fields_missing,
         errors=errors
     )
+
+
+# if __name__ == "__main__":
+#     page = requests.get(str("https://catalog.mit.edu/search/?P=4.023")).text
+#     soup = BeautifulSoup(page, "lxml")
+#     html_snippet = soup.encode_contents().decode() if soup else page
+#     pruner = PruningContentFilter(threshold=0.25)
+#     filtered_chunks = pruner.filter_content(html_snippet)
+#     html_for_schema = "\n".join(filtered_chunks)
+#     print(html_for_schema)
