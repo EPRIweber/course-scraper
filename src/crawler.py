@@ -2,24 +2,26 @@
 import asyncio
 from collections import deque
 import re
-from pathlib import Path
-from typing import List, Set, Union
+from typing import Set
 from urllib.parse import urljoin, urlparse
 import logging
 
 import httpx
 from bs4 import BeautifulSoup
 
-# Use relative imports for modules within the same package
+# Crawl4AI imports
+from crawl4ai.crawl_runner import CrawlRunner
+from crawl4ai.crawler.strategy.playwright import AsyncPlaywrightCrawlerStrategy
+
 from .config import SourceConfig
 
 logger = logging.getLogger(__name__)
 
-async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
-    """
-    Crawl the site starting at source.root_url, using a static HTTP+BS4 BFS.
-    Returns a sorted list of unique URLs.
-    """
+# ———————————————————————————————————————————————————————————————
+# public entrypoint
+# ———————————————————————————————————————————————————————————————
+
+async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
     urls = await _static_bfs_crawl(
         root_url=str(source.root_url),
         max_crawl_depth=source.crawl_depth,
@@ -28,83 +30,243 @@ async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
     )
     return sorted(urls)
 
-class ExcludePatternFilter:
-    def __init__(self, patterns: List[str]):
-        self._regexes = [re.compile(p) for p in patterns]
-
-    def exclude(self, url: str) -> bool:
-        """Return True if url matches any exclude pattern."""
-        return any(rx.search(url) for rx in self._regexes)
-
+# ———————————————————————————————————————————————————————————————
+# internal BFS crawl
+# ———————————————————————————————————————————————————————————————
 
 async def _static_bfs_crawl(
     root_url: str,
-    max_crawl_depth: int = 3,
-    include_external_links: bool = False,
-    concurrency: int = 10
+    max_crawl_depth: int,
+    include_external_links: bool,
+    concurrency: int
 ) -> Set[str]:
-    """Performs a breadth-first search crawl, returning a set of unique URLs found."""
     start = urlparse(root_url)
     domain = start.netloc
-    root_path  = (start.path.rstrip("/") + "/") if start.path else "/"
-    exclude_filter = ExcludePatternFilter([
-        r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"
-    ])
+    root_path = (start.path.rstrip("/") + "/") if start.path else "/"
 
     def _inside_start_path(u: str) -> bool:
-        up = urlparse(u)
-        return (up.netloc == domain) and up.path.startswith(root_path)
+        p = urlparse(u)
+        return p.netloc == domain and p.path.startswith(root_path)
 
-    seen: Set[str] = set()
-    queue = deque([(root_url, 0)])
+    class ExcludePatternFilter:
+        def __init__(self, patterns):
+            self._regexes = [re.compile(p) for p in patterns]
+        def exclude(self, url: str) -> bool:
+            return any(rx.search(url) for rx in self._regexes)
+
+    exclude_filter = ExcludePatternFilter([r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"])
+    seen, queue = set(), deque([(root_url, 0)])
     sem = asyncio.Semaphore(concurrency)
 
     async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-        async def fetch(url: str) -> str:
-            async with sem:
-                resp = await client.get(url, headers={'User-Agent': 'Mozilla/5.0'})
-                resp.raise_for_status()
-                return resp.text
-
         while queue:
             url, depth = queue.popleft()
             if url in seen or depth >= max_crawl_depth:
                 continue
             seen.add(url)
-            
+
             try:
                 logger.debug(f"Crawling URL (depth {depth}): {url}")
-                html = await fetch(url)
-            except httpx.RequestError as e:
-                logger.warning(f"Request failed for {e.request.url!r} - {type(e).__name__}. Skipping.")
-                continue
-            except httpx.HTTPStatusError as e:
-                logger.warning(f"HTTP error {e.response.status_code} for {e.request.url!r}. Skipping.")
-                continue
-            except Exception as e:
-                logger.error(f"An unexpected error occurred while fetching {url}: {e}", exc_info=False)
+                html = await _fetch_with_fallback(url, client, sem)
+            except Exception:
+                # already logged in helper
                 continue
 
             base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
             soup = BeautifulSoup(html, "lxml")
             for a in soup.find_all("a", href=True):
                 href = a["href"].split("#")[0]
-                if not href or href.startswith(('mailto:', 'tel:')):
-                    continue
-                
-                full_url = urljoin(base, href)
-
-                if not _inside_start_path(full_url):
-                    if include_external_links:
-                        # If external links are allowed, skip the domain check
-                        pass
-                    else:
-                        continue
-
-                if exclude_filter.exclude(full_url):
+                if not href or href.startswith(("mailto:", "tel:")):
                     continue
 
-                if full_url not in seen:
-                    queue.append((full_url, depth + 1))
+                full = urljoin(base, href)
+                if not _inside_start_path(full) and not include_external_links:
+                    continue
+                if exclude_filter.exclude(full):
+                    continue
+
+                if full not in seen:
+                    queue.append((full, depth + 1))
 
     return seen
+
+# ———————————————————————————————————————————————————————————————
+# fetch helpers
+# ———————————————————————————————————————————————————————————————
+
+async def _fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
+    """
+    Try httpx GET first; on RequestError or certain status codes, 
+    fall back to Crawl4AI Playwright render.
+    """
+    try:
+        return await _fetch_static(url, client, sem)
+    except (httpx.RequestError, httpx.HTTPStatusError) as e:
+        code = getattr(e, "response", None) and e.response.status_code
+        # treat connect/read timeouts, 403,404,429 as retryable
+        if isinstance(e, httpx.RequestError) or code in {403, 404, 429}:
+            logger.warning(f"Falling back to Playwright for {url}: {str(e)}")
+            try:
+                return await _fetch_dynamic(url)
+            except Exception as de:
+                logger.error(f"Playwright fetch failed for {url}: {de}")
+        else:
+            logger.warning(f"Non-retryable HTTP error for {url}: {str(e)}")
+        raise
+
+async def _fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
+    """Simple httpx fetch with semaphore for concurrency control."""
+    async with sem:
+        resp = await client.get(url, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml"
+        })
+        resp.raise_for_status()
+        return resp.text
+
+async def _fetch_dynamic(url: str) -> str:
+    """
+    Use Crawl4AI's Playwright strategy to render JS and return fully
+    hydrated HTML.  Headless by default.
+    """
+    strategy = AsyncPlaywrightCrawlerStrategy(headless=True)
+    runner = CrawlRunner(strategies=[strategy])
+    result = await runner.run([{"url": url}])
+    # result is a list of dicts; each has a .response.html field
+    html = result[0].response.html
+    if not html:
+        raise RuntimeError("Empty HTML from dynamic fetch")
+    return html
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # src/crawler.py
+# import asyncio
+# from collections import deque
+# import re
+# from pathlib import Path
+# from typing import List, Set, Union
+# from urllib.parse import urljoin, urlparse
+# import logging
+
+# import httpx
+# from bs4 import BeautifulSoup
+
+# # Use relative imports for modules within the same package
+# from .config import SourceConfig
+
+# logger = logging.getLogger(__name__)
+
+# async def crawl_and_collect_urls(source: SourceConfig) -> List[str]:
+#     """
+#     Crawl the site starting at source.root_url, using a static HTTP+BS4 BFS.
+#     Returns a sorted list of unique URLs.
+#     """
+#     urls = await _static_bfs_crawl(
+#         root_url=str(source.root_url),
+#         max_crawl_depth=source.crawl_depth,
+#         include_external_links=source.include_external,
+#         concurrency=source.max_concurrency
+#     )
+#     return sorted(urls)
+
+# class ExcludePatternFilter:
+#     def __init__(self, patterns: List[str]):
+#         self._regexes = [re.compile(p) for p in patterns]
+
+#     def exclude(self, url: str) -> bool:
+#         """Return True if url matches any exclude pattern."""
+#         return any(rx.search(url) for rx in self._regexes)
+
+
+# async def _static_bfs_crawl(
+#     root_url: str,
+#     max_crawl_depth: int = 3,
+#     include_external_links: bool = False,
+#     concurrency: int = 10
+# ) -> Set[str]:
+#     """Performs a breadth-first search crawl, returning a set of unique URLs found."""
+#     start = urlparse(root_url)
+#     domain = start.netloc
+#     root_path  = (start.path.rstrip("/") + "/") if start.path else "/"
+#     exclude_filter = ExcludePatternFilter([
+#         r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"
+#     ])
+
+#     def _inside_start_path(u: str) -> bool:
+#         up = urlparse(u)
+#         return (up.netloc == domain) and up.path.startswith(root_path)
+
+#     seen: Set[str] = set()
+#     queue = deque([(root_url, 0)])
+#     sem = asyncio.Semaphore(concurrency)
+
+#     async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+#         async def fetch(url: str) -> str:
+#             async with sem:
+#                 resp = await client.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+#                 resp.raise_for_status()
+#                 return resp.text
+
+#         while queue:
+#             url, depth = queue.popleft()
+#             if url in seen or depth >= max_crawl_depth:
+#                 continue
+#             seen.add(url)
+            
+#             try:
+#                 logger.debug(f"Crawling URL (depth {depth}): {url}")
+#                 html = await fetch(url)
+#             except httpx.RequestError as e:
+#                 logger.warning(f"Request failed for {e.request.url!r} - {type(e).__name__}. Skipping.")
+#                 continue
+#             except httpx.HTTPStatusError as e:
+#                 logger.warning(f"HTTP error {e.response.status_code} for {e.request.url!r}. Skipping.")
+#                 continue
+#             except Exception as e:
+#                 logger.error(f"An unexpected error occurred while fetching {url}: {e}", exc_info=False)
+#                 continue
+
+#             base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+#             soup = BeautifulSoup(html, "lxml")
+#             for a in soup.find_all("a", href=True):
+#                 href = a["href"].split("#")[0]
+#                 if not href or href.startswith(('mailto:', 'tel:')):
+#                     continue
+                
+#                 full_url = urljoin(base, href)
+
+#                 if not _inside_start_path(full_url):
+#                     if include_external_links:
+#                         # If external links are allowed, skip the domain check
+#                         pass
+#                     else:
+#                         continue
+
+#                 if exclude_filter.exclude(full_url):
+#                     continue
+
+#                 if full_url not in seen:
+#                     queue.append((full_url, depth + 1))
+
+#     return seen

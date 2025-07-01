@@ -151,13 +151,3 @@ async def validate_schema(
         fields_missing=fields_missing,
         errors=errors
     )
-
-
-# if __name__ == "__main__":
-#     page = requests.get(str("https://catalog.mit.edu/search/?P=4.023")).text
-#     soup = BeautifulSoup(page, "lxml")
-#     html_snippet = soup.encode_contents().decode() if soup else page
-#     pruner = PruningContentFilter(threshold=0.25)
-#     filtered_chunks = pruner.filter_content(html_snippet)
-#     html_for_schema = "\n".join(filtered_chunks)
-#     print(html_for_schema)

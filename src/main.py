@@ -66,10 +66,10 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         logger.info(f"[{source.name}] {msd}")
         await storage.log(run_id, source.source_id, int(st), msd)
     
-    await _log(stage, "RUNNING ONLY PROCESS_SCHEMA")
+    await _log(stage, f"RUNNING PROCESS_SCHEMA FOR {source.name}")
 
     try:
-        await _log(stage, "fetching / generating schema")
+        # await _log(stage, "fetching / generating schema")
         schema = await storage.get_schema(source.source_id)
         # schema = None
         if (not schema) or (not schema.get("baseSelector")):
@@ -93,6 +93,31 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
                     await _log(stage, f"Validation errors: \n{errors_joined}")
                 return
         await _log(stage, "schema ready")
+    except Exception as exc:
+        await _log(stage, f"FAILED: {exc}")
+        logger.exception(exc)
+
+async def process_crawl(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
+    stage: Stage = Stage.CRAWL
+
+    async def _log(st: Stage, msd: str):
+        logger.info(f"[{source.name}] {msd}")
+        await storage.log(run_id, source.source_id, int(st), msd)
+    
+    await _log(stage, F"RUNNING PROCESS_CRAWL FOR {source.name}")
+
+    try:
+        # await _log(stage, "starting crawl")
+        urls = await storage.get_urls(source.source_id)
+        if not urls:
+            crawled = await crawl_and_collect_urls(source)
+            filtered = await prefilter_urls(crawled, source)
+            await storage.save_urls(source.source_id, filtered)
+            urls = filtered
+            if not urls:
+                await _log(stage, f"ERROR: No URLs found after crawling and filtering")
+                return
+        await _log(stage, f"{len(urls)} urls ready")
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
@@ -212,8 +237,8 @@ async def main():
         sources = await storage.list_sources()
 
         # 2.  Kick off scraping tasks
-        # tasks = [process_source(run_id, src, storage) for src in sources]
-        tasks = [process_schema(run_id, src, storage) for src in sources]
+        tasks = [process_source(run_id, src, storage) for src in sources]
+        # tasks = [process_schema(run_id, src, storage) for src in sources]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as exc:
