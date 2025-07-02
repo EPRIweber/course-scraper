@@ -10,6 +10,7 @@ from src.models import SourceRunResult
 from src.prefilter import prefilter_urls
 from src.schema_manager import generate_schema, validate_schema
 from src.scraper import scrape_urls
+from src.classify_manager import classify_courses
 from src.storage import SqlServerStorage, StorageBackend
 
 LOGGING: dict = {
@@ -121,6 +122,22 @@ async def process_crawl(run_id: int, source: SourceConfig, storage: StorageBacke
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
+
+async def process_classify(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
+    stage: Stage = Stage.CLASSIFY
+
+    async def _log(st: Stage, msg: str):
+        logger.info(f"[{source.name}] {msg}")
+        await storage.log(run_id, source.source_id, int(st), msg)
+
+    try:
+        records = await storage.get_data(source.source_id)
+        
+    except Exception as exc:
+        await _log(stage, f"FAILED: {exc}")
+        logger.exception(exc)
+        
+
 
 async def process_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
     stage: Stage = Stage.CRAWL
@@ -239,7 +256,8 @@ async def main():
         # 2.  Kick off scraping tasks
         # tasks = [process_source(run_id, src, storage) for src in sources]
         # tasks = [process_schema(run_id, src, storage) for src in sources]
-        tasks = [process_crawl(run_id, src, storage) for src in sources]
+        # tasks = [process_crawl(run_id, src, storage) for src in sources]
+        tasks = [process_classify(run_id, src, storage) for src in sources]
         await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as exc:

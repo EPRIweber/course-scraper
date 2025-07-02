@@ -51,6 +51,7 @@ class Stage(IntEnum):
     SCHEMA  = 1
     SCRAPE  = 2
     STORAGE = 3
+    CLASSIFY = 4
 
 @dataclass
 class ValidationCheck:
