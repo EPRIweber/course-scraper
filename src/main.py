@@ -132,6 +132,27 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
 
     try:
         records = await storage.get_data(source.source_id)
+        if not records:
+            await _log(stage, "No records to classify; skipping classification.")
+            return
+
+        # 2) prepare tuples for classification: (id, title, description)
+        courses = [
+            (
+                rec.get("course_code") or "",
+                rec.get("course_title") or "",
+                rec.get("course_description") or ""
+            )
+            for rec in records
+        ]
+
+        # 3) run classification
+        classified = classify_courses(courses)
+        await _log(stage, f"Classified {len(classified)} courses")
+
+        # 4) log each classification
+        for course_id, labels in classified:
+            await _log(stage, f"{course_id}: {', '.join(labels)}")
         
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
