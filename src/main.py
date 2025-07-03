@@ -139,7 +139,7 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
         # 2) prepare tuples for classification: (id, title, description)
         courses = [
             (
-                rec.get("course_code") or "",
+                rec.get("course_id") or "",
                 rec.get("course_title") or "",
                 rec.get("course_description") or ""
             )
@@ -147,12 +147,11 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
         ]
 
         # 3) run classification
-        classified = classify_courses(courses)
-        await _log(stage, f"Classified {len(classified)} courses")
+        classified, usage = await classify_courses(courses)
+        await _log(stage, f"Classified {len(classified)} courses using {usage}")
 
-        # 4) log each classification
-        for course_id, labels in classified:
-            await _log(stage, f"{course_id}: {', '.join(labels)}")
+        # 4) upload back to database
+        await storage.save_classifications(classified)
         
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")

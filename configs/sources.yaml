@@ -1,15 +1,15 @@
 sources:
-- name: brown_university
-  root_url: https://bulletin.brown.edu/
-  schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
-  type: "html"
-  crawl_depth: 3
+# - name: brown_university
+#   root_url: https://bulletin.brown.edu/
+#   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
+#   type: "html"
+#   crawl_depth: 3
 
-- name: massachusetts_institute_of_technology
-  root_url: https://catalog.mit.edu/
-  schema_url: https://catalog.mit.edu/search/?P=4.023
-  type: "html"
-  crawl_depth: 8
+# - name: massachusetts_institute_of_technology
+#   root_url: https://catalog.mit.edu/
+#   schema_url: https://catalog.mit.edu/search/?P=4.023
+#   type: "html"
+#   crawl_depth: 8
 
 # - name: purdue_university
 #   root_url: https://catalog.purdue.edu/content.php?catoid=7&navoid=2928
@@ -18,12 +18,11 @@ sources:
 #   crawl_depth: 80
 #   include_external: True
 
-- name: yale_university
-  root_url: https://catalog.yale.edu/ycps/courses/
-  schema_url: https://catalog.yale.edu/ycps/courses/cpsc/
-  type: "html"
-  crawl_depth: 4
-
+# - name: yale_university
+#   root_url: https://catalog.yale.edu/ycps/courses/
+#   schema_url: https://catalog.yale.edu/ycps/courses/cpsc/
+#   type: "html"
+#   crawl_depth: 4
 
 # CAN REQUEST FOR COURSES DIRECTLY IF NEEDED
 # - name: florida_state_university
@@ -45,23 +44,23 @@ sources:
 #   crawl_depth: 2
 #   include_external: True
 
-- name: university_of_florida
-  root_url: https://catalog.ufl.edu/
-  schema_url: https://catalog.ufl.edu/UGRD/courses/african_american_studies/
-  type: "html"
-  crawl_depth: 4
+# - name: university_of_florida
+#   root_url: https://catalog.ufl.edu/
+#   schema_url: https://catalog.ufl.edu/UGRD/courses/african_american_studies/
+#   type: "html"
+#   crawl_depth: 4
 
 - name: texas_a_and_m_university
   root_url: https://catalog.tamu.edu/
   schema_url: https://catalog.tamu.edu/undergraduate/business/management/#coursestext
   type: "html"
-  crawl_depth: 5
+  crawl_depth: 6
 
-- name: iowa_state_university
-  root_url: https://catalog.iastate.edu/
-  schema_url: https://catalog.iastate.edu/azcourses/acct/
-  type: "html"
-  crawl_depth: 3
+# - name: iowa_state_university
+#   root_url: https://catalog.iastate.edu/
+#   schema_url: https://catalog.iastate.edu/azcourses/acct/
+#   type: "html"
+#   crawl_depth: 3
 
 # - name: university_of_minnesota_twin_cities
 #   root_url: https://catalogs.umn.edu/

@@ -39,6 +39,9 @@ class StorageBackend(ABC):
     @abstractmethod
     async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None: ...
 
+    @abstractmethod
+    async def save_classified(self, classified: list[tuple[str, list[str]]]) -> None: ...
+
 class SqlServerStorage(StorageBackend):
     # ------------------------------------------------------------------ init
     def __init__(self, connect_str: str): # , loop: asyncio.AbstractEventLoop | None = None):
@@ -233,6 +236,7 @@ class SqlServerStorage(StorageBackend):
             return []
         return [
             {
+                "course_id": r.course_id,
                 "course_code": r.course_code,
                 "course_title": r.course_title,
                 "course_description": r.course_description,
@@ -264,6 +268,35 @@ class SqlServerStorage(StorageBackend):
             cur = self._conn.cursor()
             cur.fast_executemany = True          # huge speed-up
             cur.executemany(sql, [(*row, source_id) for row in tvp_rows])
+            self._conn.commit()
+
+        await self._run_sync(_bulk)
+
+    async def save_classified(self, classified: list[tuple[str, list[str]]]) -> None:
+        """
+        Persist course→taxonomy relationships via a table-valued parameter.
+        `classified` is a list of (course_id, [taxonomy_id, …]) tuples.
+        """
+        if not classified:
+            return
+
+        # Flatten into rows: one (course_id, taxonomy_id) per label
+        tvp_rows = [
+            (course_id, taxonomy_id)
+            for course_id, taxonomy_ids in classified
+            for taxonomy_id in taxonomy_ids
+        ]
+
+        sql = """
+            DECLARE @t dbo.CourseTaxonomyData_v1;
+            INSERT INTO @t (course_id, taxonomy_id) VALUES (?, ?);
+            EXEC dbo.save_course_taxonomy @taxonomy_data = @t;
+        """
+
+        def _bulk():
+            cur = self._conn.cursor()
+            cur.fast_executemany = True
+            cur.executemany(sql, tvp_rows)
             self._conn.commit()
 
         await self._run_sync(_bulk)
