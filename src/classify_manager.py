@@ -1,5 +1,5 @@
 # src/classify_manager.py
-from llm_client import GemmaClient
+from src.llm_client import GemmaModel
 from src.prompts.taxonomy import taxonomy_sys_prompt
 
 async def classify_courses(courses: list[tuple[str, str, str]]) -> tuple[list[tuple[str, list[str]]], int]:
@@ -30,7 +30,7 @@ async def classify_courses(courses: list[tuple[str, str, str]]) -> tuple[list[tu
 
 async def _classify_course(title: str, desc:str) -> tuple[str, int]:
 
-    client = GemmaClient()
+    client = GemmaModel()
 
     response = client.chat([
         {"role":"system","content": taxonomy_sys_prompt},

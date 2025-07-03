@@ -275,10 +275,17 @@ async def main():
 
         # 2.  Kick off scraping tasks
         # tasks = [process_source(run_id, src, storage) for src in sources]
+        # await asyncio.gather(*tasks)
+
         # tasks = [process_schema(run_id, src, storage) for src in sources]
-        # tasks = [process_crawl(run_id, src, storage) for src in sources]
-        tasks = [process_classify(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # await asyncio.gather(*tasks)
+        tasks = [process_crawl(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks)
+        # tasks = [process_classify(run_id, src, storage) for src in sources]
+        # await asyncio.gather(*tasks)
+
+        
+        # await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as exc:
         logger.exception("Critical error in run %d: %s", run_id, exc)
