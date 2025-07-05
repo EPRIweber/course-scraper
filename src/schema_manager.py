@@ -29,7 +29,7 @@ async def _generate_schema_from_llm(
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.25)
+    pruner = PruningContentFilter(threshold=0.1)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
     log = logging.getLogger(__name__)

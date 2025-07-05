@@ -231,7 +231,7 @@ class SqlServerStorage(StorageBackend):
 
     # -------------------------------------------------------------- course records
     async def get_data(self, source_id: str) -> List[Dict[str, Any]]:
-        """Fetch first 100 course records for a given source by calling a stored procedure."""
+        """Fetch course records for a given source by calling a stored procedure."""
         # Call the dbo.get_data stored procedure.
         rows = await self._fetch("{CALL dbo.get_data(?)}", source_id)
 
@@ -244,6 +244,7 @@ class SqlServerStorage(StorageBackend):
                 "course_code": r.course_code,
                 "course_title": r.course_title,
                 "course_description": r.course_description,
+                "course_credits": r.course_credits
             }
             for r in rows
         ]
@@ -257,14 +258,15 @@ class SqlServerStorage(StorageBackend):
                 rec.get("course_code") or None,
                 rec.get("course_title") or None,
                 rec.get("course_description") or None,
+                rec.get("course_credits") or None
             )
             for rec in data
         ]
 
         sql = """
             DECLARE @t dbo.CourseData_v1;
-            INSERT @t (course_code, course_title, course_description)
-            VALUES (?, ?, ?);
+            INSERT @t (course_code, course_title, course_description, course_credits)
+            VALUES (?, ?, ?, ?);
             EXEC dbo.save_course_data ?, @t;
         """
 

@@ -108,18 +108,72 @@ async def process_crawl(run_id: int, source: SourceConfig, storage: StorageBacke
     await _log(stage, F"RUNNING PROCESS_CRAWL FOR {source.name}")
 
     try:
-        # await _log(stage, "starting crawl")
         urls = await storage.get_urls(source.source_id)
         if not urls:
             crawled = await crawl_and_collect_urls(source)
             # filtered = await prefilter_urls(crawled, source)
             filtered = crawled
-            await storage.save_urls(source.source_id, filtered)
-            urls = filtered
-            if not urls:
+            if not filtered:
                 await _log(stage, f"ERROR: No URLs found after crawling and filtering")
                 return
+            await storage.save_urls(source.source_id, filtered)
         await _log(stage, f"{len(urls)} urls ready")
+    except Exception as exc:
+        await _log(stage, f"FAILED: {exc}")
+        logger.exception(exc)
+
+async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
+    stage: Stage = Stage.SCRAPE
+
+    async def _log(st: Stage, msg: str):
+        logger.info(f"[{source.name}] {msg}")
+        await storage.log(run_id, source.source_id, int(st), msg)
+
+    try:
+        urls = await storage.get_urls(source.source_id)
+        if not urls:
+            await _log(stage, "ERROR: Attempting to scrape without URLs")
+            return None
+        schema = await storage.get_schema(source.source_id)
+        if not schema:
+            _log(stage, "ERROR: Attempting to scrape without Schema")
+            return None
+
+        good_urls, bad_urls = [], []
+        await _log(stage, f"attempting to get data...")
+        records = await storage.get_data(source.source_id)
+        if not records:
+            await _log(stage, f"no data found, scraping {len(urls)} pages")
+            records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
+            if json_errors:
+                joined_json_errors = "\n\n\n".join(json_errors)
+                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
+            if not records:
+                await _log(stage, "ERROR: No records extracted from pages")
+                joined_json_errors = "\n\n\n".join(json_errors)
+                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
+                return
+            await _log(stage, f"{len(records)} records scraped")
+
+        # -------- STORAGE -----------------------------------------------
+        stage = Stage.STORAGE
+        await _log(stage, "writing records to DB")
+        # Ensure records is always a list of dicts
+        if isinstance(records, dict):
+            records = [records]
+        await storage.save_data(source.source_id, records)
+        if hasattr(storage, "update_url_targets"):
+            # Ensure good_urls and bad_urls are lists of strings
+            if not isinstance(good_urls, list):
+                good_urls = list(good_urls) if good_urls else []
+            if not isinstance(bad_urls, list):
+                bad_urls = list(bad_urls) if bad_urls else []
+            await storage.update_url_targets(
+                source_id=source.source_id,
+                good_urls=good_urls,
+                bad_urls=bad_urls
+            )
+        await _log(stage, "done")
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
@@ -280,7 +334,9 @@ async def main():
 
         # tasks = [process_schema(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
-        tasks = [process_crawl(run_id, src, storage) for src in sources]
+        # tasks = [process_crawl(run_id, src, storage) for src in sources]
+        # await asyncio.gather(*tasks)
+        tasks = [process_scrape(run_id, src, storage) for src in sources]
         await asyncio.gather(*tasks)
         # tasks = [process_classify(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)

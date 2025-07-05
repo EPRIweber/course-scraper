@@ -23,7 +23,7 @@ async def scrape_urls(
     records, good_urls, json_errors  = await _scrape_with_schema(
         urls=urls,
         schema=schema,
-        max_concurrency=source.max_concurrency if source.max_concurrency is not None else 5
+        max_concurrency=source.max_concurrency
     )
     bad_urls       = set(urls) - good_urls
     return records, good_urls, bad_urls, json_errors

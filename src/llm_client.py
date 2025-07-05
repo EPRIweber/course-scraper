@@ -69,7 +69,7 @@ class BaseLLMClient:
 class GemmaModel(BaseLLMClient):
     """vLLM-based Gemma model client"""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = "None"):
         super().__init__(
             model="google/gemma-3-27b-it",
             api_key=api_key,
@@ -80,7 +80,7 @@ class GemmaModel(BaseLLMClient):
 class LlamaModel(BaseLLMClient):
     """vLLM-based Llama model client"""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = "None"):
         super().__init__(
             model="meta/llama-3.2-90b-vision-instruct",
             api_key=api_key,
