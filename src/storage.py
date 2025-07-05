@@ -264,7 +264,7 @@ class SqlServerStorage(StorageBackend):
         ]
 
         sql = """
-            DECLARE @t dbo.CourseData_v1;
+            DECLARE @t dbo.CourseData_v2;
             INSERT @t (course_code, course_title, course_description, course_credits)
             VALUES (?, ?, ?, ?);
             EXEC dbo.save_course_data ?, @t;

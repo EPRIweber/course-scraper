@@ -1,5 +1,6 @@
 # src/main.py
 import asyncio
+import json
 import logging, logging.config
 import os
 from typing import Optional
@@ -279,6 +280,25 @@ async def process_source(run_id: int, source: SourceConfig, storage: StorageBack
                 await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
                 return
             await _log(stage, f"{len(records)} records scraped")
+
+        # LOCAL RECORDS SAVE
+        records_file = "output_records.json"
+        good_urls_file = "good_urls.json"
+        bad_urls_file = "bad_urls.json"
+        try:
+            with open(records_file, 'w') as f:
+                json.dump(records, f, indent=2)
+            print(f"Successfully wrote data to {records_file}")
+            with open(good_urls_file, 'w') as f:
+                json.dump(good_urls, f, indent=2)
+            print(f"Successfully wrote data to {good_urls_file}")
+            with open(bad_urls_file, 'w') as f:
+                json.dump(bad_urls, f, indent=2)
+            print(f"Successfully wrote data to {bad_urls_file}")
+        except IOError as e:
+            print(f"Error writing to file: {e}")
+
+        
 
         # -------- STORAGE -----------------------------------------------
         stage = Stage.STORAGE
