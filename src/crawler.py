@@ -14,6 +14,7 @@ from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 
 from .config import SourceConfig
 
+logging.getLogger("src.crawler").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # ———————————————————————————————————————————————————————————————
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 # ———————————————————————————————————————————————————————————————
 
 async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
+    logger.debug(f"Running crawl with:\n  max_crawl_depth:{source.crawl_depth}\n  include_external:{source.include_external}\n  concurrency:{source.max_concurrency}")
     urls = await _static_bfs_crawl(
         root_url=str(source.root_url),
         max_crawl_depth=source.crawl_depth,
@@ -128,9 +130,11 @@ async def _fetch_dynamic(url: str) -> str:
     Use Crawl4AI's Playwright strategy to render JS and return fully
     hydrated HTML.  Headless by default.
     """
-    strategy = AsyncPlaywrightCrawlerStrategy(headless=True)
+    logger.debug(f"Dynamic fetch for URL: {url!r}")
+    strategy = AsyncPlaywrightCrawlerStrategy(headless=True, logger=logger)
     crawler = AsyncWebCrawler(crawler_strategy=strategy)
     result = await crawler.arun([{"url": url}])
+    logger.debug("Raw playwright result: %s", result)
     # result is a list of dicts; each has a .response.html field
     html = result.html
     if not html:

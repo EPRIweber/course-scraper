@@ -55,6 +55,7 @@ sources:
   schema_url: https://catalog.tamu.edu/undergraduate/business/management/#coursestext
   type: "html"
   crawl_depth: 6
+  max_concurrency: 5
 
 # - name: iowa_state_university
 #   root_url: https://catalog.iastate.edu/

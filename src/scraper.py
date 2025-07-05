@@ -53,10 +53,12 @@ async def _scrape_with_schema(
     good_pages: set[str] = set()
     json_errors = []
 
+    current_urls = filter(lambda url: "archive" not in url, urls)
+
     # 2) Fire off all URLs in parallel
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
         results = await crawler.arun_many(
-            urls=urls,
+            urls=current_urls,
             config=run_cfg,
             max_concurrency=max_concurrency
         )
