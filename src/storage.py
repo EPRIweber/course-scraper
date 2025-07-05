@@ -103,7 +103,7 @@ class SqlServerStorage(StorageBackend):
         Insert (or fetch) the GUID of this source in `sources` and return it.
         """
         row = await self._fetch(
-            "{CALL dbo.upsert_source(?,?,?,?,?,?,?,?)}",
+            "{CALL dbo.upsert_source(?,?,?,?,?,?,?,?,?,?)}",
             src_cfg.name,
             src_cfg.type,
             str(src_cfg.root_url),
@@ -111,7 +111,9 @@ class SqlServerStorage(StorageBackend):
             src_cfg.crawl_depth,
             src_cfg.include_external,
             src_cfg.page_timeout_s,
-            src_cfg.max_concurrency
+            src_cfg.max_concurrency,
+            src_cfg.url_base_exclude,
+            json.dumps(src_cfg.url_exclude_patterns or [])
         )
         if not row or not hasattr(row[0], "source_id"):
             raise RuntimeError("Failed to fetch or insert source; no source_id returned.")
@@ -138,6 +140,8 @@ class SqlServerStorage(StorageBackend):
                 crawl_depth=r.crawl_depth,
                 page_timeout_s=r.page_timeout_s,
                 max_concurrency=r.max_concurrency,
+                url_base_exclude=r.url_base_exclude,
+                url_exclude_patterns=json.loads(r.url_exclude_patterns or "[]")
             )
             for r in rows
         ]

@@ -5,7 +5,7 @@ import os
 from typing import Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
-from src.crawler import crawl_and_collect_urls
+from src.crawler import close_playwright, crawl_and_collect_urls
 from src.models import SourceRunResult
 from src.prefilter import prefilter_urls
 from src.schema_manager import generate_schema, validate_schema
@@ -112,7 +112,8 @@ async def process_crawl(run_id: int, source: SourceConfig, storage: StorageBacke
         urls = await storage.get_urls(source.source_id)
         if not urls:
             crawled = await crawl_and_collect_urls(source)
-            filtered = await prefilter_urls(crawled, source)
+            # filtered = await prefilter_urls(crawled, source)
+            filtered = crawled
             await storage.save_urls(source.source_id, filtered)
             urls = filtered
             if not urls:
@@ -293,6 +294,7 @@ async def main():
     finally:
         await storage.end_run(run_id)               # unlock mutex
         logger.info("Run %d completed – lock released.", run_id)
+        await close_playwright()
 
 async def testing():
     test_source = config.sources[0]

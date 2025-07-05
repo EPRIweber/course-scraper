@@ -17,17 +17,25 @@ from .config import SourceConfig
 logging.getLogger("src.crawler").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+_strategy: AsyncPlaywrightCrawlerStrategy | None = None
+_crawler: AsyncWebCrawler | None = None
+
 # ———————————————————————————————————————————————————————————————
 # public entrypoint
 # ———————————————————————————————————————————————————————————————
 
 async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
-    logger.debug(f"Running crawl with:\n  max_crawl_depth:{source.crawl_depth}\n  include_external:{source.include_external}\n  concurrency:{source.max_concurrency}")
+    logger.debug(f"""Running crawl with:
+  max_crawl_depth:{source.crawl_depth}
+  include_external:{source.include_external}
+  concurrency:{source.max_concurrency}
+  exclude_patterns(additional):{source.url_exclude_patterns}""")
     urls = await _static_bfs_crawl(
         root_url=str(source.root_url),
         max_crawl_depth=source.crawl_depth,
         include_external_links=source.include_external,
-        concurrency=source.max_concurrency
+        concurrency=source.max_concurrency,
+        exclude_patterns=source.url_exclude_patterns
     )
     return sorted(urls)
 
@@ -39,7 +47,8 @@ async def _static_bfs_crawl(
     root_url: str,
     max_crawl_depth: int,
     include_external_links: bool,
-    concurrency: int
+    concurrency: int,
+    exclude_patterns: list[str]
 ) -> Set[str]:
     start = urlparse(root_url)
     domain = start.netloc
@@ -55,7 +64,11 @@ async def _static_bfs_crawl(
         def exclude(self, url: str) -> bool:
             return any(rx.search(url) for rx in self._regexes)
 
-    exclude_filter = ExcludePatternFilter([r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"])
+    exclude_filter = ExcludePatternFilter(
+        [r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"] + exclude_patterns
+        if exclude_patterns
+        else [r"/pdf/", r"\.pdf$", r"\.jpg$", r"\.png$", r"\.gif$"]
+    )
     seen, queue = set(), deque([(root_url, 0)])
     sem = asyncio.Semaphore(concurrency)
 
@@ -95,6 +108,17 @@ async def _static_bfs_crawl(
 # fetch helpers
 # ———————————————————————————————————————————————————————————————
 
+def _get_playwright_crawler():
+    global _strategy, _crawler
+    if not _strategy:
+        _strategy = AsyncPlaywrightCrawlerStrategy(headless=True, logger=logger)
+        _crawler = AsyncWebCrawler(crawler_strategy=_strategy)
+    return _crawler, _strategy
+
+async def close_playwright():
+    if _strategy:
+        await _strategy.close()
+
 async def _fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
     """
     Try httpx GET first; on RequestError or certain status codes, 
@@ -131,12 +155,11 @@ async def _fetch_dynamic(url: str) -> str:
     hydrated HTML.  Headless by default.
     """
     logger.debug(f"Dynamic fetch for URL: {url!r}")
-    strategy = AsyncPlaywrightCrawlerStrategy(headless=True, logger=logger)
-    crawler = AsyncWebCrawler(crawler_strategy=strategy)
+    crawler, _ = _get_playwright_crawler()
     result = await crawler.arun([{"url": url}])
     logger.debug("Raw playwright result: %s", result)
     # result is a list of dicts; each has a .response.html field
-    html = result.html
+    html = result.html or ""
     if not html:
         raise RuntimeError("Empty HTML from dynamic fetch")
     return html

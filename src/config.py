@@ -19,6 +19,8 @@ class SourceConfig(BaseModel):
     crawl_depth: Optional[int] = 5
     page_timeout_s: Optional[int] = 20
     max_concurrency: Optional[int] = 10
+    url_base_exclude: Optional[str] = None
+    url_exclude_patterns: Optional[list[str]] = None
 
     class Config:
         extra = 'forbid'
