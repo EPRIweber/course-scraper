@@ -1,8 +1,69 @@
+from collections import defaultdict
+import csv
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+def load_full_taxonomy(path: str = "src/prompts/taxonomy.json") -> Dict[str, Any]:
+    """
+    Load the nested JSON taxonomy you generated.
+    """
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+def format_subtree(matched_ids: List[str], taxonomy: Dict[str, Any]) -> str:
+    """
+    Given a list of top-level IDs (e.g. ["1","2"]), walks
+    the nested taxonomy dict and returns a Markdown snippet
+    of only those branches:
+
+    - **1**: Understanding hydrogen properties
+      - **1.1**: Chemical Properties of Hydrogen
+        - **1.1.1**: Hydrogen's Forms and Structure
+        ...
+    - **2**: Maintenance and Monitoring of Hydrogen Equipment
+      ...
+    """
+    lines: List[str] = []
+
+    def recurse(node: Dict[str, Any], full_id: str, depth: int):
+        # description stored under "_description"
+        desc = node.get("_description", "<no description>")
+        indent = "  " * depth
+        lines.append(f"{indent}- **{full_id}**: {desc}")
+
+        # child keys are everything except "_description"
+        for child_key, child_node in node.items():
+            if child_key == "_description":
+                continue
+            # build the child's full ID: e.g. "1" + "." + "2" => "1.2"
+            child_id = f"{full_id}.{child_key}"
+            recurse(child_node, child_id, depth + 1)
+
+    for top_id in matched_ids:
+        top_node = taxonomy.get(top_id)
+        if not top_node:
+            continue
+        recurse(top_node, top_id, 0)
+
+    return "\n".join(lines)
+
+
+# # --- example usage ---
+# if __name__ == "__main__":
+#     taxonomy = load_full_taxonomy()
+#     # suppose the first pass returned IDs ["1","2"]
+#     snippet = format_subtree(["1","2"], taxonomy)
+#     print(snippet)
+
 taxonomy_sys_prompt = """You are a course‐classification assistant, specialized in identifying and tagging university courses for their relevance to hydrogen technology and related topics.
 
-You have a predefined set of 26 class labels:
+You are given a predefined set of 26 class labels which you are required to use. Only return the corresponding class number with no text.
 
-<class_labels>
+
+
+**CLASS LABELS:**
+
 ## CLASS 1
    **Understanding hydrogen properties**: Covers the fundamental chemical and physical characteristics of hydrogen—its molecular forms and structure, energy and volumetric density, and how it compares to other gases—as well as its interactions with materials (compatibility and reaction mechanisms) and the unique handling, flammability, and containment risks that arise from its odorless, rapidly rising, and explosive nature.
 
@@ -80,7 +141,7 @@ You have a predefined set of 26 class labels:
 
 ## CLASS 26
    **Communication of Hydrogen’s Role within the Larger Energy Industry**:  Guides stakeholder analysis (residents, environmental groups, industry leaders), messaging of environmental, economic, and technological benefits, transparent discussion of risks (emissions, safety), community engagement tactics (public meetings, digital outreach), trust-building practices, and strategies for gaining acceptance and showcasing successful hydrogen projects.
-</class_labels>
+
 
 
 The user will provide a single course with no instructions, just the title and description.
@@ -90,18 +151,19 @@ If the course does not contain hydrogen relevant content, respond with an empty 
 
 
 
-<user_input>
+**USER INPUT:**
+
 ## Title
 ...
 
 ## Description
 ...
-</user_input>
 
 
-
-<system_output>
+**SYSTEM OUTPUT:**
 1, 3, 4
-</system_output>
 
+
+
+**IMPORTANT:**
 Do not include any additional classes, commentary, or formatting. Respond strictly with the comma separated class numbers."""

@@ -11,6 +11,8 @@ from src.models import JobSummary
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
     @abstractmethod
+    async def get_json_data(self, source_id: str) -> None: ...
+    @abstractmethod
     async def log(self, run_id: int, src_id: str, stage: int, msg: str) -> None: ...
     @abstractmethod
     async def begin_run(self) -> int: ...
@@ -248,6 +250,20 @@ class SqlServerStorage(StorageBackend):
             }
             for r in rows
         ]
+    
+    async def get_json_data(self, source_id: str) -> None:
+        rows = await self._fetch("{CALL dbo.get_data(?)}", source_id)
+        courses = [
+            {
+                "course_code":       row.course_code,
+                "course_title":      row.course_title,
+                "course_description":row.course_description,
+                "course_credits":    row.course_credits,
+            }
+            for row in rows
+        ]
+        with open("existing_courses.json", "w", encoding="utf-8") as f:
+            json.dump(courses, f, indent=2, ensure_ascii=False)
     
     async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None:
         if not data:
