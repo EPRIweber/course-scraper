@@ -296,7 +296,7 @@ class SqlServerStorage(StorageBackend):
 
     async def save_classified(self, classified: list[tuple[str, list[str]]]) -> None:
         """
-        Persist course→taxonomy relationships via a table-valued parameter.
+        Persist course → taxonomy relationships via a table-valued parameter.
         `classified` is a list of (course_id, [taxonomy_id, …]) tuples.
         """
         if not classified:
