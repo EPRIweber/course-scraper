@@ -88,7 +88,7 @@ async def classify_courses(
         prompt = [
             {"role":"system","content":taxonomy_sys_prompt},
             {"role":"user","content":(
-                f"Here are subclass options under ID(s) {', '.join(labels)}:\n\n"
+                f"**Second Step:**\n\nHere are subclass options under ID(s) {', '.join(labels)}:\n\n"
                 f"{subtree_md}\n\n"
                 f"## Course to classify\n"
                 f"Title: {title_map[cid]}\n"

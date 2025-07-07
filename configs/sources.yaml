@@ -1,9 +1,10 @@
 sources:
-# - name: brown_university
-#   root_url: https://bulletin.brown.edu/
-#   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
-#   type: "html"
-#   crawl_depth: 3
+- name: brown_university
+  root_url: https://bulletin.brown.edu/
+  schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
+  type: html
+  max_concurrency: 1
+  url_exclude_patterns: ["search", "azindex"]
 
 # - name: massachusetts_institute_of_technology
 #   root_url: https://catalog.mit.edu/
@@ -62,6 +63,8 @@ sources:
   root_url: https://www.catalog.caltech.edu/current/2024-25/
   schema_url: https://www.catalog.caltech.edu/current/2024-25/department/Ae/
   type: html
+  max_concurrency: 1
+  crawl_depth: 3
 
 
 # - name: iowa_state_university
