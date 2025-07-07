@@ -58,6 +58,12 @@ sources:
   max_concurrency: 1
   url_exclude_patterns: ["search"]
 
+- name: california_institute_of_technology
+  root_url: https://www.catalog.caltech.edu/current/2024-25/
+  schema_url: https://www.catalog.caltech.edu/current/2024-25/department/Ae/
+  type: html
+
+
 # - name: iowa_state_university
 #   root_url: https://catalog.iastate.edu/
 #   schema_url: https://catalog.iastate.edu/azcourses/acct/

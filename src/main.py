@@ -131,73 +131,75 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
         logger.info(f"[{source.name}] {msg}")
         await storage.log(run_id, source.source_id, int(st), msg)
 
-    try:
-        urls = await storage.get_urls(source.source_id)
-        if not urls:
-            await _log(stage, "ERROR: Attempting to scrape without URLs")
-            return None
-        schema = await storage.get_schema(source.source_id)
-        if not schema:
-            await _log(stage, "ERROR: Attempting to scrape without Schema")
-            return None
+        data = storage.get_data(source.source_id)
+        if not data:
+            try:
+                urls = await storage.get_urls(source.source_id)
+                if not urls:
+                    await _log(stage, "ERROR: Attempting to scrape without URLs")
+                    return None
+                schema = await storage.get_schema(source.source_id)
+                if not schema:
+                    await _log(stage, "ERROR: Attempting to scrape without Schema")
+                    return None
 
-        good_urls, bad_urls = [], []
-        await _log(stage, f"attempting to get data...")
-        records = await storage.get_data(source.source_id)
-        if not records:
-            await _log(stage, f"no data found, scraping {len(urls)} pages")
-            records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
-            if json_errors:
-                joined_json_errors = "\n\n\n".join(json_errors)
-                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
-            if not records:
-                await _log(stage, "ERROR: No records extracted from pages")
-                joined_json_errors = "\n\n\n".join(json_errors)
-                await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
-                return
-            await _log(stage, f"{len(records)} records scraped")
+                good_urls, bad_urls = [], []
+                await _log(stage, f"attempting to get data...")
+                records = await storage.get_data(source.source_id)
+                if not records:
+                    await _log(stage, f"no data found, scraping {len(urls)} pages")
+                    records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
+                    if json_errors:
+                        joined_json_errors = "\n\n\n".join(json_errors)
+                        await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
+                    if not records:
+                        await _log(stage, "ERROR: No records extracted from pages")
+                        joined_json_errors = "\n\n\n".join(json_errors)
+                        await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
+                        return
+                    await _log(stage, f"{len(records)} records scraped")
 
-        
-        # LOCAL RECORDS SAVE
-        # records_file = "output_records.json"
-        # good_urls_file = "good_urls.json"
-        # bad_urls_file = "bad_urls.json"
-        # try:
-        #     with open(records_file, 'w') as f:
-        #         json.dump(records, f, indent=2)
-        #     print(f"Successfully wrote data to {records_file}")
-        #     with open(good_urls_file, 'w') as f:
-        #         json.dump(list(good_urls), f, indent=2)
-        #     print(f"Successfully wrote data to {good_urls_file}")
-        #     with open(bad_urls_file, 'w') as f:
-        #         json.dump(list(bad_urls), f, indent=2)
-        #     print(f"Successfully wrote data to {bad_urls_file}")
-        # except IOError as e:
-        #     print(f"Error writing to file: {e}")
+                
+                # LOCAL RECORDS SAVE
+                # records_file = "output_records.json"
+                # good_urls_file = "good_urls.json"
+                # bad_urls_file = "bad_urls.json"
+                # try:
+                #     with open(records_file, 'w') as f:
+                #         json.dump(records, f, indent=2)
+                #     print(f"Successfully wrote data to {records_file}")
+                #     with open(good_urls_file, 'w') as f:
+                #         json.dump(list(good_urls), f, indent=2)
+                #     print(f"Successfully wrote data to {good_urls_file}")
+                #     with open(bad_urls_file, 'w') as f:
+                #         json.dump(list(bad_urls), f, indent=2)
+                #     print(f"Successfully wrote data to {bad_urls_file}")
+                # except IOError as e:
+                #     print(f"Error writing to file: {e}")
 
 
-        # -------- STORAGE -----------------------------------------------
-        stage = Stage.STORAGE
-        await _log(stage, "writing records to DB")
-        # Ensure records is always a list of dicts
-        if isinstance(records, dict):
-            records = [records]
-        await storage.save_data(source.source_id, records)
-        if hasattr(storage, "update_url_targets"):
-            # Ensure good_urls and bad_urls are lists of strings
-            if not isinstance(good_urls, list):
-                good_urls = list(good_urls) if good_urls else []
-            if not isinstance(bad_urls, list):
-                bad_urls = list(bad_urls) if bad_urls else []
-            await storage.update_url_targets(
-                source_id=source.source_id,
-                good_urls=good_urls,
-                bad_urls=bad_urls
-            )
-        await _log(stage, "done")
-    except Exception as exc:
-        await _log(stage, f"FAILED: {exc}")
-        logger.exception(exc)
+                # -------- STORAGE -----------------------------------------------
+                stage = Stage.STORAGE
+                await _log(stage, "writing records to DB")
+                # Ensure records is always a list of dicts
+                if isinstance(records, dict):
+                    records = [records]
+                await storage.save_data(source.source_id, records)
+                if hasattr(storage, "update_url_targets"):
+                    # Ensure good_urls and bad_urls are lists of strings
+                    if not isinstance(good_urls, list):
+                        good_urls = list(good_urls) if good_urls else []
+                    if not isinstance(bad_urls, list):
+                        bad_urls = list(bad_urls) if bad_urls else []
+                    await storage.update_url_targets(
+                        source_id=source.source_id,
+                        good_urls=good_urls,
+                        bad_urls=bad_urls
+                    )
+                await _log(stage, "done")
+            except Exception as exc:
+                await _log(stage, f"FAILED: {exc}")
+                logger.exception(exc)
 
 async def process_classify(run_id: int, source: SourceConfig, storage: StorageBackend) -> Optional[SourceRunResult]:
     stage: Stage = Stage.CLASSIFY
@@ -252,19 +254,19 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
         
         
         # LOCAL RECORDS SAVE
-        invalid_file = "invalid.json"
-        empty_file = "empty.json"
-        # clean_file = "clean.json"
-        try:
-            with open(invalid_file, 'w') as f:
-                json.dump(invalid, f, indent=2)
-            print(f"Successfully wrote data to {invalid_file}")
-            with open(empty_file, 'w') as f:
-                json.dump(list(empty), f, indent=2)
-            print(f"Successfully wrote data to {empty_file}")
+        # invalid_file = "invalid.json"
+        # empty_file = "empty.json"
+        # # clean_file = "clean.json"
+        # try:
+        #     with open(invalid_file, 'w') as f:
+        #         json.dump(invalid, f, indent=2)
+        #     print(f"Successfully wrote data to {invalid_file}")
+        #     with open(empty_file, 'w') as f:
+        #         json.dump(list(empty), f, indent=2)
+        #     print(f"Successfully wrote data to {empty_file}")
             
-        except IOError as e:
-            print(f"Error writing to file: {e}")
+        # except IOError as e:
+        #     print(f"Error writing to file: {e}")
 
         
     except Exception as exc:
@@ -294,16 +296,15 @@ async def main():
             return
 
         # 2.  Kick off scraping tasks
-        # tasks = [process_schema(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
-        # tasks = [process_crawl(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
-        # tasks = [process_scrape(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
-        tasks = [process_classify(run_id, src, storage) for src in sources]
+        tasks = [process_schema(run_id, src, storage) for src in sources]
         await asyncio.gather(*tasks)
+        tasks = [process_crawl(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks)
+        tasks = [process_scrape(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks)
+        # tasks = [process_classify(run_id, src, storage) for src in sources]
+        # await asyncio.gather(*tasks)
 
-        
         # await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as exc:
