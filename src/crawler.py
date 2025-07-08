@@ -5,6 +5,7 @@ import re
 from typing import Set
 from urllib.parse import urljoin, urlparse
 import logging
+import random
 
 import httpx
 from bs4 import BeautifulSoup
@@ -35,7 +36,8 @@ async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
         max_crawl_depth=source.crawl_depth,
         include_external_links=source.include_external,
         concurrency=source.max_concurrency,
-        exclude_patterns=source.url_exclude_patterns
+        exclude_patterns=source.url_exclude_patterns,
+        base_exclude=str(source.url_base_exclude)
     )
     return sorted(urls)
 
@@ -48,9 +50,10 @@ async def _static_bfs_crawl(
     max_crawl_depth: int,
     include_external_links: bool,
     concurrency: int,
-    exclude_patterns: list[str]
+    exclude_patterns: list[str],
+    base_exclude: str
 ) -> Set[str]:
-    start = urlparse(root_url)
+    start = urlparse(base_exclude if base_exclude else root_url)
     domain = start.netloc
     root_path = (start.path.rstrip("/") + "/") if start.path else "/"
 
@@ -140,14 +143,41 @@ async def _fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio
         raise
 
 async def _fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
-    """Simple httpx fetch with semaphore for concurrency control."""
+    """Simple httpx fetch with semaphore for concurrency control, with retry/backoff on 429/503."""
+    backoff = 1.0
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        async with sem:
+            resp = await client.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "text/html,application/xhtml+xml"
+                }
+            )
+        # if not a retryable status, or success, break or error
+        if resp.status_code < 400:
+            return resp.text
+        if resp.status_code not in (403, 429, 503):
+            resp.raise_for_status()
+
+        # rate-limited or service unavailable → back off and retry
+        logger.warning(
+            "Received %d from %s, backing off %.1fs (attempt %d/%d)",
+            resp.status_code, url, backoff, attempt, max_retries
+        )
+        # jitter ± 0–1s
+        await asyncio.sleep(backoff + random.random())
+        backoff *= 2
+
+    # if we exhaust retries, do one final request to raise the right error
     async with sem:
         resp = await client.get(url, headers={
             "User-Agent": "Mozilla/5.0",
             "Accept": "text/html,application/xhtml+xml"
         })
-        resp.raise_for_status()
-        return resp.text
+    resp.raise_for_status()
+    return resp.text
 
 async def _fetch_dynamic(url: str) -> str:
     """
