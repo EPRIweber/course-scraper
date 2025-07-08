@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 def load_full_taxonomy(path: str = "src/prompts/taxonomy.json") -> Dict[str, Any]:
-    """
-    Load the nested JSON taxonomy you generated.
-    """
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+   """
+   Load the nested JSON taxonomy you generated.
+   """
+   with open(path, encoding="utf-8") as f:
+      return json.load(f)
 
 def format_subtree(matched_ids: List[str], taxonomy: Dict[str, Any]) -> str:
     """
@@ -166,4 +166,6 @@ If the course does not contain hydrogen relevant content, respond with an empty 
 
 
 **IMPORTANT:**
-Do not include any additional classes, commentary, or formatting. Respond strictly with the comma separated class numbers."""
+Do not include any additional classes, commentary, or formatting. Respond strictly with the comma separated class numbers.
+
+In the next step you will be given the sub-classes for each of the matches classes from the first step. Your job will be to repeat the same classification step using the new subclasses."""

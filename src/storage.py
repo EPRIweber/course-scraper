@@ -42,6 +42,8 @@ class StorageBackend(ABC):
     async def save_data(self, source_id: str, data: List[Dict[str, Any]]) -> None: ...
 
     @abstractmethod
+    async def get_classified(self, source_id: str) -> list[tuple[str, str]]: ...
+    @abstractmethod
     async def save_classified(self, classified: list[tuple[str, list[str]]]) -> None: ...
 
 class SqlServerStorage(StorageBackend):
@@ -294,9 +296,28 @@ class SqlServerStorage(StorageBackend):
 
         await self._run_sync(_bulk)
 
+    async def get_classified(self, source_id: str) -> list[tuple[str, str]]:
+        """
+        Fetch all (course_id, taxonomy_id) pairs for the given source_id
+        by joining course_taxonomy01 to courses.
+        """
+        # Query for all taxonomy assignments where the course belongs to this source
+        sql = """
+            SELECT ct.course_id, ct.taxonomy_id
+            FROM dbo.course_taxonomy01 AS ct
+            INNER JOIN dbo.courses AS c
+              ON ct.course_id = c.course_id
+            WHERE c.course_source_id = ?
+        """
+        rows = await self._fetch(sql, source_id)
+        if not rows:
+            return []
+        # Each row has .course_id and .taxonomy_id attributes
+        return [(row.course_id, row.taxonomy_id) for row in rows]
+
     async def save_classified(self, classified: list[tuple[str, list[str]]]) -> None:
         """
-        Persist course→taxonomy relationships via a table-valued parameter.
+        Persist course → taxonomy relationships via a table-valued parameter.
         `classified` is a list of (course_id, [taxonomy_id, …]) tuples.
         """
         if not classified:

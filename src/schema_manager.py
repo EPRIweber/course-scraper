@@ -26,14 +26,33 @@ async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> tuple[dict, int]:
     """Helper function to perform LLM call."""
+    prune_threshold = 0.1
+
     page = requests.get(str(url)).text
     soup = BeautifulSoup(page, "lxml")
     html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=0.1)
+    pruner = PruningContentFilter(threshold=prune_threshold)
     filtered_chunks = pruner.filter_content(html_snippet)
     html_for_schema = "\n".join(filtered_chunks)
-    log = logging.getLogger(__name__)
-    log.info(f"generating schema for using html with {len(html_for_schema)} characters from {url}")
+    if len(html_for_schema) > 200000:
+        prune_threshold = 0.3
+        page = requests.get(str(url)).text
+        soup = BeautifulSoup(page, "lxml")
+        html_snippet = soup.encode_contents().decode() if soup else page
+        pruner = PruningContentFilter(threshold=prune_threshold)
+        filtered_chunks = pruner.filter_content(html_snippet)
+        html_for_schema = "\n".join(filtered_chunks)
+        log = logging.getLogger(__name__)
+    if len(html_for_schema) > 200000:
+        prune_threshold = 0.5
+        page = requests.get(str(url)).text
+        soup = BeautifulSoup(page, "lxml")
+        html_snippet = soup.encode_contents().decode() if soup else page
+        pruner = PruningContentFilter(threshold=prune_threshold)
+        filtered_chunks = pruner.filter_content(html_snippet)
+        html_for_schema = "\n".join(filtered_chunks)
+        log = logging.getLogger(__name__)
+    log.info(f"Generating schema for using html with {len(html_for_schema)} characters using pruning threshold {prune_threshold} from {url}")
     
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
