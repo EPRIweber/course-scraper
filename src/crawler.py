@@ -6,12 +6,14 @@ from typing import Set
 from urllib.parse import urljoin, urlparse
 import logging
 import random
-
+import ssl
+import warnings
 import httpx
 from bs4 import BeautifulSoup
 
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
+import urllib3
 
 from .config import SourceConfig
 
@@ -45,6 +47,12 @@ async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
 # internal BFS crawl
 # ———————————————————————————————————————————————————————————————
 
+# Suppress “InsecureRequestWarning” across this module
+warnings.filterwarnings(
+    "ignore",
+    category=urllib3.exceptions.InsecureRequestWarning
+)
+
 async def _static_bfs_crawl(
     root_url: str,
     max_crawl_depth: int,
@@ -75,7 +83,11 @@ async def _static_bfs_crawl(
     seen, queue = set(), deque([(root_url, 0)])
     sem = asyncio.Semaphore(concurrency)
 
-    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+    async with httpx.AsyncClient(
+        timeout=10,
+        follow_redirects=True,
+        verify=True
+    ) as client:
         while queue:
             url, depth = queue.popleft()
             if url in seen or depth >= max_crawl_depth:

@@ -1,11 +1,20 @@
 # src/schema_manager.py
+import asyncio
+from urllib.parse import urljoin
+import httpx
 import requests, json, logging
 
 from pydantic import HttpUrl
 from typing import List
+import urllib3
+import ssl
 from src.config import SourceConfig, ValidationCheck
 from crawl4ai.content_filter_strategy import PruningContentFilter
+from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+import random
+import warnings
+import urllib3
 
 from src.llm_client import LlamaModel, GemmaModel
 from src.prompts.schema import FindRepeating
@@ -22,37 +31,103 @@ async def generate_schema(
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
+
+# Suppress “InsecureRequestWarning” across this module
+warnings.filterwarnings(
+    "ignore",
+    category=urllib3.exceptions.InsecureRequestWarning
+)
+
+async def _fetch_and_expand(base_url: str, html: str) -> str:
+    soup = BeautifulSoup(html, "lxml")
+    anchors = [
+        a for a in soup.find_all("a", href=True, onclick=True)
+        if "preview_course_nopop.php" in a["href"]
+    ]
+
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True, verify=False) as client:
+        tasks = [client.get(urljoin(base_url, a["href"])) for a in anchors]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+    expanded_parts: list[str] = []
+    for resp in responses:
+        if isinstance(resp, Exception) or resp.status_code >= 400:
+            continue
+
+        frag = BeautifulSoup(resp.text, "lxml")
+        expanded_parts.append(str(frag))
+        # try pulling out exactly the course-detail cell
+        # if cells:
+        #     for cell in cells:
+        #         expanded_parts.append(str(cell))
+        # else:
+        #     # fallback to entire fragment
+        #     expanded_parts.append(str(frag))
+
+    # if you only want the first N courses, you can slice here
+    # expanded_parts = expanded_parts[0:10]
+    
+    
+
+    sudo_html = (
+        "<div class=\"expanded-course-details\">\n"
+        + "\n".join(expanded_parts)
+        + "\n</div>"
+    )
+
+    # with open(f"{base_url.replace("/", "").replace(":", "").replace("?", "").replace("=", "").replace("&", "")}", "w") as f:
+    #     f.write(sudo_html)
+
+
+    cells = BeautifulSoup(sudo_html, "lxml").select("td.coursepadding")
+
+    return (
+        "<div class=\"expanded-course-details\">\n"
+        + "\n".join(cells)
+        + "\n</div>"
+    )
+
+
 async def _generate_schema_from_llm(
     url: HttpUrl,
 ) -> tuple[dict, int]:
     """Helper function to perform LLM call."""
-    prune_threshold = 0.1
+    log = logging.getLogger(__name__)
 
-    page = requests.get(str(url)).text
-    soup = BeautifulSoup(page, "lxml")
-    html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=prune_threshold)
-    filtered_chunks = pruner.filter_content(html_snippet)
-    html_for_schema = "\n".join(filtered_chunks)
-    if len(html_for_schema) > 200000:
-        prune_threshold = 0.3
-        page = requests.get(str(url)).text
-        soup = BeautifulSoup(page, "lxml")
-        html_snippet = soup.encode_contents().decode() if soup else page
+    async with httpx.AsyncClient(
+        timeout=10,
+        follow_redirects=True,
+        verify=False
+    ) as client:
+        resp = await client.get(str(url))
+        resp.raise_for_status()
+        catalog_html = resp.text
+    
+    if "Modern Campus Catalog" in catalog_html:
+        # raw_html = await _fetch_and_expand(str(url), catalog_html)
+        with open("src/modern_campus.json", 'r') as f:
+            return json.load(f), 0
+    else:
+        raw_html = catalog_html
+    soup = BeautifulSoup(raw_html, "lxml")
+    html_snippet = soup.encode_contents().decode()
+    
+    # 2) Prune until snippet is reasonably small (or threshold too high)
+    prune_threshold = 0.0
+    html_for_schema = html_snippet
+    while len(html_for_schema) > 250_000 and prune_threshold < 1.0:
+        prune_threshold += 0.1
         pruner = PruningContentFilter(threshold=prune_threshold)
-        filtered_chunks = pruner.filter_content(html_snippet)
-        html_for_schema = "\n".join(filtered_chunks)
-        log = logging.getLogger(__name__)
-    if len(html_for_schema) > 200000:
-        prune_threshold = 0.5
-        page = requests.get(str(url)).text
-        soup = BeautifulSoup(page, "lxml")
-        html_snippet = soup.encode_contents().decode() if soup else page
-        pruner = PruningContentFilter(threshold=prune_threshold)
-        filtered_chunks = pruner.filter_content(html_snippet)
-        html_for_schema = "\n".join(filtered_chunks)
-        log = logging.getLogger(__name__)
-    log.info(f"Generating schema for using html with {len(html_for_schema)} characters using pruning threshold {prune_threshold} from {url}")
+        chunks = pruner.filter_content(html_snippet)
+        html_for_schema = "\n".join(chunks)
+
+    # print(html_for_schema)
+
+    # print(html_for_schema)
+    log.info(
+        "Generating schema with %d characters (prune_threshold=%.1f) from %s",
+        len(html_for_schema), prune_threshold, url
+    )
     
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
@@ -147,6 +222,7 @@ async def validate_schema(
             schema=schema,
             source=source
         )
+        # print(json.dumps(records))
 
         # surface JSON decode errors, if any
         if json_errors:

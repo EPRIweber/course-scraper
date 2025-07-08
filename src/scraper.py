@@ -3,6 +3,7 @@ import json
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
+import re, html, unicodedata
 
 from crawl4ai import (
     AsyncWebCrawler,
@@ -37,6 +38,18 @@ async def _scrape_with_schema(
     Apply the JSON-CSS schema to each URL in parallel using arun_many.
     Returns a flat list of all extracted course dicts, each with a "_source_url".
     """
+    def clean_text(s: str) -> str:
+        # unescape any html entities
+        s = html.unescape(s)
+        # normalize unicode (e.g. turn “\u00a0” into actual NBSP)
+        s = unicodedata.normalize("NFKC", s)
+        # replace non-breaking spaces and bullet chars
+        s = s.replace("\u00a0", " ").replace("\u2022", " ")
+        # collapse whitespace
+        s = re.sub(r"\s+", " ", s)
+        # strip leading/trailing
+        return s.strip()
+
     log = logging.getLogger(__name__)
     # 1) Setup crawler config
     browser_cfg = BrowserConfig(headless=True, verbose=False)
@@ -79,6 +92,18 @@ async def _scrape_with_schema(
             log.error(f"Failed to decode JSON from {page_result.url}: {raw[:100]}...")
             json_errors.append(f"JSON errors on {page_result.url}: {raw[:100]}{"..." if len(raw) > 100 else ""}")
             continue
+
+        # --- CLEANUP: strip out unicode escapes & bullets ---
+        # apply to every string field in every record
+        cleaned_items = []
+        for obj in items:
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if isinstance(v, str):
+                        obj[k] = clean_text(v)
+            cleaned_items.append(obj)
+        items = cleaned_items
+        # ---------------------------------------------------
 
         source_url = getattr(page_result, "url", None) or getattr(page_result, "request_url", None)
 

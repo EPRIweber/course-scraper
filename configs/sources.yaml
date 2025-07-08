@@ -68,15 +68,15 @@ sources:
 
 - name: university_of_houston_undergraduate
   root_url: https://publications.uh.edu/content.php?catoid=52&navoid=19813
-  schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=52&coid=267706
-  base_exclude: https://publications.uh.edu
+  schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=52&coid=271554
+  url_base_exclude: https://publications.uh.edu
   max_concurrency: 1
   crawl_depth: 43
 
 - name: university_of_houston_graduate
   root_url: https://publications.uh.edu/content.php?catoid=53&navoid=20423
-  schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=53&coid=281997
-  base_exclude: https://publications.uh.edu
+  schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=53&coid=279846
+  url_base_exclude: https://publications.uh.edu
   max_concurrency: 1
   crawl_depth: 46
 
