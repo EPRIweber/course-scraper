@@ -80,6 +80,68 @@ sources:
   max_concurrency: 1
   crawl_depth: 46
 
+- name: appalachian_state_university_undergraduate
+  root_url: https://bulletin.appstate.edu/content.php?catoid=39&navoid=2430
+  schema_url: https://bulletin.appstate.edu/preview_course_nopop.php?catoid=39&coid=139133
+  url_base_exclude: https://bulletin.appstate.edu
+  max_concurrency: 1
+  crawl_depth: 36
+
+- name: appalachian_state_university_graduate
+  root_url: https://bulletin.appstate.edu/content.php?catoid=33&navoid=2058
+  schema_url: https://bulletin.appstate.edu/preview_course_nopop.php?catoid=33&coid=119819
+  url_base_exclude: https://bulletin.appstate.edu
+  max_concurrency: 1
+  crawl_depth: 17
+
+- name: louisiana_state_university
+  root_url: https://catalog.lsu.edu/content.php?catoid=33&navoid=3206
+  schema_url: https://catalog.lsu.edu/preview_course_nopop.php?catoid=33&coid=224102
+  url_base_exclude: https://catalog.lsu.edu
+  max_concurrency: 1
+  crawl_depth: 61
+
+- name: morgan_state_university_undergraduate
+  root_url: https://catalog.morgan.edu/content.php?catoid=26&navoid=1881
+  schema_url: https://catalog.morgan.edu/preview_course_nopop.php?catoid=26&coid=57239
+  url_base_exclude: https://catalog.morgan.edu
+  max_concurrency: 1
+  crawl_depth: 22
+  
+- name: morgan_state_university_graduate
+  root_url: https://catalog.morgan.edu/content.php?catoid=27&navoid=1991
+  schema_url: https://catalog.morgan.edu/preview_course_nopop.php?catoid=27&coid=61591
+  url_base_exclude: https://catalog.morgan.edu
+  max_concurrency: 1
+  crawl_depth: 19
+
+- name: tuskegee_university
+  root_url: https://catalog.tuskegee.edu/content.php?catoid=15&navoid=849
+  schema_url: https://catalog.tuskegee.edu/preview_course_nopop.php?catoid=15&coid=26801
+  url_base_exclude: https://catalog.tuskegee.edu
+  max_concurrency: 1
+  crawl_depth: 19
+
+- name: western_michigan_university_undergraduate
+  root_url: https://catalog.wmich.edu/content.php?catoid=45&navoid=2169
+  schema_url: https://catalog.wmich.edu/preview_course_nopop.php?catoid=45&coid=138571
+  url_base_exclude: https://catalog.wmich.edu
+  max_concurrency: 1
+  crawl_depth: 30
+
+- name: western_michigan_university_graduate
+  root_url: https://catalog.wmich.edu/content.php?catoid=46&navoid=2230
+  schema_url: https://catalog.wmich.edu/preview_course_nopop.php?catoid=46&coid=144223
+  url_base_exclude: https://catalog.wmich.edu
+  max_concurrency: 1
+  crawl_depth: 22
+
+- name: adams_state_university
+  root_url: https://adams.catalog.acalog.com/content.php?catoid=76&navoid=4847
+  schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=76&coid=166804
+  url_base_exclude: https://adams.catalog.acalog.com
+  max_concurrency: 1
+  crawl_depth: 17
 
 
 # - name: iowa_state_university

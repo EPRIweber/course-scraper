@@ -47,6 +47,12 @@ async def _scrape_with_schema(
         s = s.replace("\u00a0", " ").replace("\u2022", " ")
         # collapse whitespace
         s = re.sub(r"\s+", " ", s)
+        s = re.sub("Help (opens a new window)", "", s)
+        s = re.sub("Page (opens a new window)", "", s)
+        s = re.sub("Print (opens a new window)", "", s)
+        s = s.replace("(opens a new window)", "")
+        s = s.replace("Add to My Favorites Share this PageFacebook this Page Tweet this Page Print Help", "")
+        s = re.sub(r"\d\d\d\d-\d\d\d\d ((Undergraduate)|(Graduate)) CatalogAdd to Portfolio", "", s)
         # strip leading/trailing
         return s.strip()
 
@@ -101,6 +107,10 @@ async def _scrape_with_schema(
                 for k, v in obj.items():
                     if isinstance(v, str):
                         obj[k] = clean_text(v)
+                    elif isinstance(v, dict):
+                        for key, val in v.items():
+                            if isinstance(val, str):
+                                obj[key] = clean_text(val)
             cleaned_items.append(obj)
         items = cleaned_items
         # ---------------------------------------------------
@@ -111,25 +121,26 @@ async def _scrape_with_schema(
             good_pages.add(source_url)
         
         for item in items:
-            item["_source_url"] = source_url
-            if "course_code" in item and isinstance(item["course_code"], list) and item["course_code"]:
-                str_codes: list[str] = []
-                raw_codes = item.get("course_code")
-                for code in raw_codes:
-                    if isinstance(code, dict):
-                        txt = str(code.get("text", "")).strip()
+            if ("course_title" in item) and ("course_description" in item):
+                item["_source_url"] = source_url
+                if "course_code" in item and isinstance(item["course_code"], list) and item["course_code"]:
+                    str_codes: list[str] = []
+                    raw_codes = item.get("course_code")
+                    for code in raw_codes:
+                        if isinstance(code, dict):
+                            txt = str(code.get("text", "")).strip()
+                        else:
+                            txt = str(code).strip()
+                        if txt:
+                            str_codes.append(txt)
+                    if str_codes:
+                        unique = sorted(set(str_codes))
+                        norm = "_".join(unique)
+                        item["course_code"] = norm
+                        log.debug(f"Codes {raw_codes!r} → {norm!r}")
                     else:
-                        txt = str(code).strip()
-                    if txt:
-                        str_codes.append(txt)
-                if str_codes:
-                    unique = sorted(set(str_codes))
-                    norm = "_".join(unique)
-                    item["course_code"] = norm
-                    log.debug(f"Codes {raw_codes!r} → {norm!r}")
-                else:
-                    item.pop("course_code", None)
+                        item.pop("course_code", None)
 
-            all_records.append(item)
+                all_records.append(item)
 
     return all_records, good_pages, json_errors

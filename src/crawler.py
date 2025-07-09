@@ -39,7 +39,8 @@ async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
         include_external_links=source.include_external,
         concurrency=source.max_concurrency,
         exclude_patterns=source.url_exclude_patterns,
-        base_exclude=str(source.url_base_exclude)
+        base_exclude=str(source.url_base_exclude),
+        timeout=source.page_timeout_s
     )
     return sorted(urls)
 
@@ -59,7 +60,8 @@ async def _static_bfs_crawl(
     include_external_links: bool,
     concurrency: int,
     exclude_patterns: list[str],
-    base_exclude: str
+    base_exclude: str,
+    timeout: int
 ) -> Set[str]:
     start = urlparse(base_exclude if base_exclude else root_url)
     domain = start.netloc
@@ -83,39 +85,90 @@ async def _static_bfs_crawl(
     seen, queue = set(), deque([(root_url, 0)])
     sem = asyncio.Semaphore(concurrency)
 
+
+
     async with httpx.AsyncClient(
-        timeout=10,
+        timeout=timeout,
         follow_redirects=True,
-        verify=True
+        verify=False
     ) as client:
-        while queue:
-            url, depth = queue.popleft()
-            if url in seen or depth >= max_crawl_depth:
-                continue
-            seen.add(url)
+        resp = await client.get(str(root_url))
+        resp.raise_for_status()
+        catalog_html = resp.text
+    
+        if "Modern Campus Catalog" in catalog_html:
+            while queue:
+                url, depth = queue.popleft()
+                if url in seen or depth >= max_crawl_depth:
+                    continue
+                seen.add(url)
 
-            try:
-                logger.debug(f"Crawling URL (depth {depth}): {url}")
-                html = await _fetch_with_fallback(url, client, sem)
-            except Exception:
-                # already logged in helper
-                continue
-
-            base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-            soup = BeautifulSoup(html, "lxml")
-            for a in soup.find_all("a", href=True):
-                href = a["href"].split("#")[0]
-                if not href or href.startswith(("mailto:", "tel:")):
+                try:
+                    logger.debug(f"Crawling URL (depth {depth}): {url}")
+                    html = await _fetch_with_fallback(url, client, sem)
+                except Exception:
+                    # already logged in helper
                     continue
 
-                full = urljoin(base, href)
-                if not _inside_start_path(full) and not include_external_links:
+                base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                soup = BeautifulSoup(html, "lxml")
+                for a in soup.find_all("a", href=True):
+                    href = a["href"].split("#")[0]
+                    if not href or href.startswith(("mailto:", "tel:")):
+                        continue
+
+                    full = urljoin(base, href)
+                    if not _inside_start_path(full) and not include_external_links:
+                        continue
+                    if exclude_filter.exclude(full):
+                        continue
+                    
+                    if "preview_course_nopop.php" in full:
+                        seen.add(full)
+
+                for a in soup.select('tr > td[colspan="2"] > a[href]', href=True):
+                    href = a['href'].split('#')[0]
+                    if not href or href.startswith(("mailto:", "tel:")):
+                        continue
+
+                    full = urljoin(base, href)
+                    if not _inside_start_path(full) and not include_external_links:
+                        continue
+                    if exclude_filter.exclude(full):
+                        continue
+
+                    if full not in seen and "content.php" in full:
+                        queue.append((full, depth + 1))
+
+        else:
+            while queue:
+                url, depth = queue.popleft()
+                if url in seen or depth >= max_crawl_depth:
                     continue
-                if exclude_filter.exclude(full):
+                seen.add(url)
+
+                try:
+                    logger.debug(f"Crawling URL (depth {depth}): {url}")
+                    html = await _fetch_with_fallback(url, client, sem)
+                except Exception:
+                    # already logged in helper
                     continue
 
-                if full not in seen:
-                    queue.append((full, depth + 1))
+                base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                soup = BeautifulSoup(html, "lxml")
+                for a in soup.find_all("a", href=True):
+                    href = a["href"].split("#")[0]
+                    if not href or href.startswith(("mailto:", "tel:")):
+                        continue
+
+                    full = urljoin(base, href)
+                    if not _inside_start_path(full) and not include_external_links:
+                        continue
+                    if exclude_filter.exclude(full):
+                        continue
+
+                    if full not in seen:
+                        queue.append((full, depth + 1))
 
     return seen
 

@@ -27,7 +27,7 @@ async def generate_schema(
     source: SourceConfig,
 ) -> tuple[dict, int]:
     log = logging.getLogger(__name__)
-    schema, usage = await _generate_schema_from_llm(url=source.schema_url)
+    schema, usage = await _generate_schema_from_llm(url=source.schema_url, page_timout=source.page_timeout_s)
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
@@ -38,64 +38,60 @@ warnings.filterwarnings(
     category=urllib3.exceptions.InsecureRequestWarning
 )
 
-async def _fetch_and_expand(base_url: str, html: str) -> str:
-    soup = BeautifulSoup(html, "lxml")
-    anchors = [
-        a for a in soup.find_all("a", href=True, onclick=True)
-        if "preview_course_nopop.php" in a["href"]
-    ]
+# async def _fetch_and_expand(base_url: str, html: str) -> str:
+#     soup = BeautifulSoup(html, "lxml")
+#     anchors = [
+#         a for a in soup.find_all("a", href=True, onclick=True)
+#         if "preview_course_nopop.php" in a["href"]
+#     ]
 
-    async with httpx.AsyncClient(timeout=10, follow_redirects=True, verify=False) as client:
-        tasks = [client.get(urljoin(base_url, a["href"])) for a in anchors]
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
+#     async with httpx.AsyncClient(timeout=10, follow_redirects=True, verify=False) as client:
+#         tasks = [client.get(urljoin(base_url, a["href"])) for a in anchors]
+#         responses = await asyncio.gather(*tasks, return_exceptions=True)
 
-    expanded_parts: list[str] = []
-    for resp in responses:
-        if isinstance(resp, Exception) or resp.status_code >= 400:
-            continue
+#     expanded_parts: list[str] = []
+#     for resp in responses:
+#         if isinstance(resp, Exception) or resp.status_code >= 400:
+#             continue
 
-        frag = BeautifulSoup(resp.text, "lxml")
-        expanded_parts.append(str(frag))
-        # try pulling out exactly the course-detail cell
-        # if cells:
-        #     for cell in cells:
-        #         expanded_parts.append(str(cell))
-        # else:
-        #     # fallback to entire fragment
-        #     expanded_parts.append(str(frag))
+#         frag = BeautifulSoup(resp.text, "lxml")
+#         expanded_parts.append(str(frag))
+#         # try pulling out exactly the course-detail cell
+#         # if cells:
+#         #     for cell in cells:
+#         #         expanded_parts.append(str(cell))
+#         # else:
+#         #     # fallback to entire fragment
+#         #     expanded_parts.append(str(frag))
 
-    # if you only want the first N courses, you can slice here
-    # expanded_parts = expanded_parts[0:10]
-    
-    
+#     # if you only want the first N courses, you can slice here
+#     # expanded_parts = expanded_parts[0:10]
+#     sudo_html = (
+#         "<div class=\"expanded-course-details\">\n"
+#         + "\n".join(expanded_parts)
+#         + "\n</div>"
+#     )
+#     # with open(f"{base_url.replace("/", "").replace(":", "").replace("?", "").replace("=", "").replace("&", "")}", "w") as f:
+#     #     f.write(sudo_html)
 
-    sudo_html = (
-        "<div class=\"expanded-course-details\">\n"
-        + "\n".join(expanded_parts)
-        + "\n</div>"
-    )
+#     cells = BeautifulSoup(sudo_html, "lxml").select("td.coursepadding")
 
-    # with open(f"{base_url.replace("/", "").replace(":", "").replace("?", "").replace("=", "").replace("&", "")}", "w") as f:
-    #     f.write(sudo_html)
-
-
-    cells = BeautifulSoup(sudo_html, "lxml").select("td.coursepadding")
-
-    return (
-        "<div class=\"expanded-course-details\">\n"
-        + "\n".join(cells)
-        + "\n</div>"
-    )
+#     return (
+#         "<div class=\"expanded-course-details\">\n"
+#         + "\n".join(cells)
+#         + "\n</div>"
+#     )
 
 
 async def _generate_schema_from_llm(
     url: HttpUrl,
+    page_timout: int
 ) -> tuple[dict, int]:
     """Helper function to perform LLM call."""
     log = logging.getLogger(__name__)
 
     async with httpx.AsyncClient(
-        timeout=10,
+        timeout=page_timout,
         follow_redirects=True,
         verify=False
     ) as client:
@@ -222,7 +218,7 @@ async def validate_schema(
             schema=schema,
             source=source
         )
-        # print(json.dumps(records))
+        print(json.dumps(records))
 
         # surface JSON decode errors, if any
         if json_errors:
