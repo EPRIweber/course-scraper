@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 async def get_storage_backend() -> Optional[StorageBackend]:
     try:
         conn_str = (
-            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
             f"SERVER={os.getenv('DB_SERVER')};"
             f"DATABASE={os.getenv('DB_NAME')};"
             f"UID={os.getenv('DB_USER')};"
