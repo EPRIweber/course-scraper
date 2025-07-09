@@ -21,13 +21,13 @@ async def scrape_urls(
     schema: Dict[str, Any],
     source: SourceConfig
 ) -> tuple[List[Dict[str, Any]], set[str], set[str], list[Any]]:
-    records, good_urls, json_errors  = await _scrape_with_schema(
+    records, good_urls, result_errors  = await _scrape_with_schema(
         urls=urls,
         schema=schema,
         max_concurrency=source.max_concurrency
     )
     bad_urls       = set(urls) - good_urls
-    return records, good_urls, bad_urls, json_errors
+    return records, good_urls, bad_urls, result_errors
 
 async def _scrape_with_schema(
     urls: List[str],
@@ -45,6 +45,7 @@ async def _scrape_with_schema(
         s = unicodedata.normalize("NFKC", s)
         # replace non-breaking spaces and bullet chars
         s = s.replace("\u00a0", " ").replace("\u2022", " ")
+        s = re.sub(r"\n", " ", s)
         # collapse whitespace
         s = re.sub(r"\s+", " ", s)
         s = re.sub("Help (opens a new window)", "", s)
@@ -66,11 +67,12 @@ async def _scrape_with_schema(
         cache_mode=CacheMode.BYPASS,
         scraping_strategy=LXMLWebScrapingStrategy(),
         extraction_strategy=extraction_strategy,
+        page_timeout=60000*10
     )
 
     all_records: List[Dict[str, Any]] = []
     good_pages: set[str] = set()
-    json_errors = []
+    result_errors = []
 
     current_urls = filter(lambda url: "archive" not in url, urls)
 
@@ -81,14 +83,19 @@ async def _scrape_with_schema(
             config=run_cfg,
             max_concurrency=max_concurrency
         )
+
+    failures = []
     
     # 3) Parse out each page's JSON payload
     for page_result in results:
         raw = page_result.extracted_content
 
+        if getattr(page_result, "error", None):
+            failures.append((page_result.url, page_result.error))
+
         if not raw:
             log.error(f"No extracted content from {page_result.url}")
-            json_errors.append(f"No extracted content from {page_result.url}")
+            result_errors.append(f"No extracted content from {page_result.url}")
             continue
 
 
@@ -96,7 +103,7 @@ async def _scrape_with_schema(
             items = json.loads(raw)
         except json.JSONDecodeError:
             log.error(f"Failed to decode JSON from {page_result.url}: {raw[:100]}...")
-            json_errors.append(f"JSON errors on {page_result.url}: {raw[:100]}{"..." if len(raw) > 100 else ""}")
+            result_errors.append(f"JSON errors on {page_result.url}: {raw[:100]}{"..." if len(raw) > 100 else ""}")
             continue
 
         # --- CLEANUP: strip out unicode escapes & bullets ---
@@ -142,5 +149,7 @@ async def _scrape_with_schema(
                         item.pop("course_code", None)
 
                 all_records.append(item)
+            else:
+                result_errors.append(f"Page missing course_title and/or course_description: {json.dumps(item) if isinstance(item, "dict") else item}")
 
-    return all_records, good_pages, json_errors
+    return all_records, good_pages, result_errors

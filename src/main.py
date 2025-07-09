@@ -55,6 +55,7 @@ async def get_storage_backend() -> Optional[StorageBackend]:
             f"PWD={os.getenv('DB_PASS')};"
             "TrustServerCertificate=yes;"
             "Encrypt=yes;"
+            "MARS_Connection=Yes;"
         )
         logger.info("Using SQL-Server storage backend")
         return SqlServerStorage(conn_str)
@@ -151,14 +152,14 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
             records = await storage.get_data(source.source_id)
             if not records:
                 await _log(stage, f"no data found, scraping {len(urls)} pages")
-                records, good_urls, bad_urls, json_errors = await scrape_urls(urls, schema, source)
-                if json_errors:
-                    joined_json_errors = "\n\n\n".join(json_errors)
-                    await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
+                records, good_urls, bad_urls, result_errors = await scrape_urls(urls, schema, source)
+                if result_errors:
+                    joined_result_errors = "\n\n\n".join(result_errors)
+                    await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
                 if not records:
                     await _log(stage, "ERROR: No records extracted from pages")
-                    joined_json_errors = "\n\n\n".join(json_errors)
-                    await _log(stage, f"WARNING: Found {len(json_errors)} JSON errors: \n{joined_json_errors}")
+                    joined_result_errors = "\n\n\n".join(result_errors)
+                    await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
                     return
                 await _log(stage, f"{len(records)} records scraped")
 
@@ -308,8 +309,8 @@ async def main():
         # await asyncio.gather(*tasks)
         # tasks = [process_crawl(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
-        # tasks = [process_scrape(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
+        tasks = [process_scrape(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks)
         # tasks = [process_classify(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
 
