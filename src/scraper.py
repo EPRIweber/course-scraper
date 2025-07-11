@@ -150,6 +150,6 @@ async def _scrape_with_schema(
 
                 all_records.append(item)
             else:
-                result_errors.append(f"Page missing course_title and/or course_description: {json.dumps(item) if isinstance(item, "dict") else item}")
+                result_errors.append(f"Page missing course_title and/or course_description: {json.dumps(item) if isinstance(item, dict) else item}")
 
     return all_records, good_pages, result_errors

@@ -1,10 +1,11 @@
 sources:
-- name: brown_university
-  root_url: https://bulletin.brown.edu/
-  schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
-  type: html
-  max_concurrency: 1
-  url_exclude_patterns: ["search", "azindex"]
+
+# - name: brown_university
+#   root_url: https://bulletin.brown.edu/
+#   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
+#   type: html
+#   max_concurrency: 1
+#   url_exclude_patterns: ["search", "azindex"]
 
 # - name: massachusetts_institute_of_technology
 #   root_url: https://catalog.mit.edu/
@@ -51,97 +52,114 @@ sources:
 #   type: "html"
 #   crawl_depth: 4
 
-- name: texas_a_and_m_university
-  root_url: https://catalog.tamu.edu/
-  schema_url: https://catalog.tamu.edu/undergraduate/business/management/#coursestext
-  type: "html"
-  crawl_depth: 3
-  max_concurrency: 1
-  url_exclude_patterns: ["search"]
+# - name: texas_a_and_m_university
+#   root_url: https://catalog.tamu.edu/
+#   schema_url: https://catalog.tamu.edu/undergraduate/business/management/#coursestext
+#   type: "html"
+#   crawl_depth: 3
+#   max_concurrency: 1
+#   url_exclude_patterns: ["search"]
 
-- name: california_institute_of_technology
-  root_url: https://www.catalog.caltech.edu/current/2024-25/
-  schema_url: https://www.catalog.caltech.edu/current/2024-25/department/Ae/
-  type: html
-  max_concurrency: 1
-  crawl_depth: 3
+# - name: california_institute_of_technology
+#   root_url: https://www.catalog.caltech.edu/current/2024-25/
+#   schema_url: https://www.catalog.caltech.edu/current/2024-25/department/Ae/
+#   type: html
+#   max_concurrency: 1
+#   crawl_depth: 3
 
-- name: university_of_houston_undergraduate
-  root_url: https://publications.uh.edu/content.php?catoid=52&navoid=19813
-  schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=52&coid=271554
-  url_base_exclude: https://publications.uh.edu
-  max_concurrency: 1
-  crawl_depth: 43
+# - name: university_of_houston_undergraduate
+#   root_url: https://publications.uh.edu/content.php?catoid=52&navoid=19813
+#   schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=52&coid=271554
+#   url_base_exclude: https://publications.uh.edu
+#   max_concurrency: 1
+#   crawl_depth: 43
 
-- name: university_of_houston_graduate
-  root_url: https://publications.uh.edu/content.php?catoid=53&navoid=20423
-  schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=53&coid=279846
-  url_base_exclude: https://publications.uh.edu
-  max_concurrency: 1
-  crawl_depth: 46
+# - name: university_of_houston_graduate
+#   root_url: https://publications.uh.edu/content.php?catoid=53&navoid=20423
+#   schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=53&coid=279846
+#   url_base_exclude: https://publications.uh.edu
+#   max_concurrency: 1
+#   crawl_depth: 46
 
-- name: appalachian_state_university_undergraduate
-  root_url: https://bulletin.appstate.edu/content.php?catoid=39&navoid=2430
-  schema_url: https://bulletin.appstate.edu/preview_course_nopop.php?catoid=39&coid=139133
-  url_base_exclude: https://bulletin.appstate.edu
-  max_concurrency: 1
-  crawl_depth: 36
+# - name: appalachian_state_university_undergraduate
+#   root_url: https://bulletin.appstate.edu/content.php?catoid=39&navoid=2430
+#   schema_url: https://bulletin.appstate.edu/preview_course_nopop.php?catoid=39&coid=139133
+#   url_base_exclude: https://bulletin.appstate.edu
+#   max_concurrency: 1
+#   crawl_depth: 36
 
-- name: appalachian_state_university_graduate
-  root_url: https://bulletin.appstate.edu/content.php?catoid=33&navoid=2058
-  schema_url: https://bulletin.appstate.edu/preview_course_nopop.php?catoid=33&coid=119819
-  url_base_exclude: https://bulletin.appstate.edu
-  max_concurrency: 1
-  crawl_depth: 17
+# - name: appalachian_state_university_graduate
+#   root_url: https://bulletin.appstate.edu/content.php?catoid=33&navoid=2058
+#   schema_url: https://bulletin.appstate.edu/preview_course_nopop.php?catoid=33&coid=119819
+#   url_base_exclude: https://bulletin.appstate.edu
+#   max_concurrency: 1
+#   crawl_depth: 17
 
-- name: louisiana_state_university
-  root_url: https://catalog.lsu.edu/content.php?catoid=33&navoid=3206
-  schema_url: https://catalog.lsu.edu/preview_course_nopop.php?catoid=33&coid=224102
-  url_base_exclude: https://catalog.lsu.edu
-  max_concurrency: 1
-  crawl_depth: 61
+# - name: louisiana_state_university
+#   root_url: https://catalog.lsu.edu/content.php?catoid=33&navoid=3206
+#   schema_url: https://catalog.lsu.edu/preview_course_nopop.php?catoid=33&coid=224102
+#   url_base_exclude: https://catalog.lsu.edu
+#   max_concurrency: 1
+#   crawl_depth: 61
 
-- name: morgan_state_university_undergraduate
-  root_url: https://catalog.morgan.edu/content.php?catoid=26&navoid=1881
-  schema_url: https://catalog.morgan.edu/preview_course_nopop.php?catoid=26&coid=57239
-  url_base_exclude: https://catalog.morgan.edu
-  max_concurrency: 1
-  crawl_depth: 22
+# - name: morgan_state_university_undergraduate
+#   root_url: https://catalog.morgan.edu/content.php?catoid=26&navoid=1881
+#   schema_url: https://catalog.morgan.edu/preview_course_nopop.php?catoid=26&coid=57239
+#   url_base_exclude: https://catalog.morgan.edu
+#   max_concurrency: 1
+#   crawl_depth: 22
   
-- name: morgan_state_university_graduate
-  root_url: https://catalog.morgan.edu/content.php?catoid=27&navoid=1991
-  schema_url: https://catalog.morgan.edu/preview_course_nopop.php?catoid=27&coid=61591
-  url_base_exclude: https://catalog.morgan.edu
-  max_concurrency: 1
-  crawl_depth: 19
+# - name: morgan_state_university_graduate
+#   root_url: https://catalog.morgan.edu/content.php?catoid=27&navoid=1991
+#   schema_url: https://catalog.morgan.edu/preview_course_nopop.php?catoid=27&coid=61591
+#   url_base_exclude: https://catalog.morgan.edu
+#   max_concurrency: 1
+#   crawl_depth: 19
 
-- name: tuskegee_university
-  root_url: https://catalog.tuskegee.edu/content.php?catoid=15&navoid=849
-  schema_url: https://catalog.tuskegee.edu/preview_course_nopop.php?catoid=15&coid=26801
-  url_base_exclude: https://catalog.tuskegee.edu
-  max_concurrency: 1
-  crawl_depth: 19
+# - name: tuskegee_university
+#   root_url: https://catalog.tuskegee.edu/content.php?catoid=15&navoid=849
+#   schema_url: https://catalog.tuskegee.edu/preview_course_nopop.php?catoid=15&coid=26801
+#   url_base_exclude: https://catalog.tuskegee.edu
+#   max_concurrency: 1
+#   crawl_depth: 19
 
-- name: western_michigan_university_undergraduate
-  root_url: https://catalog.wmich.edu/content.php?catoid=45&navoid=2169
-  schema_url: https://catalog.wmich.edu/preview_course_nopop.php?catoid=45&coid=138571
-  url_base_exclude: https://catalog.wmich.edu
-  max_concurrency: 1
-  crawl_depth: 30
+# - name: western_michigan_university_undergraduate
+#   root_url: https://catalog.wmich.edu/content.php?catoid=45&navoid=2169
+#   schema_url: https://catalog.wmich.edu/preview_course_nopop.php?catoid=45&coid=138571
+#   url_base_exclude: https://catalog.wmich.edu
+#   max_concurrency: 1
+#   crawl_depth: 30
 
-- name: western_michigan_university_graduate
-  root_url: https://catalog.wmich.edu/content.php?catoid=46&navoid=2230
-  schema_url: https://catalog.wmich.edu/preview_course_nopop.php?catoid=46&coid=144223
-  url_base_exclude: https://catalog.wmich.edu
-  max_concurrency: 1
-  crawl_depth: 22
+# - name: western_michigan_university_graduate
+#   root_url: https://catalog.wmich.edu/content.php?catoid=46&navoid=2230
+#   schema_url: https://catalog.wmich.edu/preview_course_nopop.php?catoid=46&coid=144223
+#   url_base_exclude: https://catalog.wmich.edu
+#   max_concurrency: 1
+#   crawl_depth: 22
 
-- name: adams_state_university
-  root_url: https://adams.catalog.acalog.com/content.php?catoid=76&navoid=4847
-  schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=76&coid=166804
-  url_base_exclude: https://adams.catalog.acalog.com
-  max_concurrency: 1
-  crawl_depth: 17
+# - name: adams_state_university
+#   root_url: https://adams.catalog.acalog.com/content.php?catoid=78&navoid=4973
+#   schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=78&coid=170837
+#   url_base_exclude: https://adams.catalog.acalog.com
+#   max_concurrency: 1
+#   crawl_depth: 17
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # - name: bluefield_state_college
 #   root_url: https://catalog.bluefieldstate.edu/content.php?catoid=12&navoid=2226
@@ -262,33 +280,39 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 3
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+
+
+# BEGIN MAP SCHOOLS
+
+
+- name: oregon_state_university
+  root_url: https://catalog.oregonstate.edu/courses/
+  schema_url: https://catalog.oregonstate.edu/courses/ats/
+  max_concurrency: 1
+  crawl_depth: 3
+
+# - name: cal_state_la
+#   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
+#   schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
+#   url_base_exclude: https://ecatalog.calstatela.edu
+#   max_concurrency: 1
+#   crawl_depth: 50
+
+# - name: texas_tech
+#   root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
+#   schema_url: https://catalog.ttu.edu/preview_course_nopop.php?catoid=21&coid=120564
+#   url_base_exclude: https://catalog.ttu.edu
+#   max_concurrency: 1
+#   crawl_depth: 63
+
+- name: university_of_nebraska_lincoln
+  root_url: https://catalog.unl.edu/undergraduate/courses/
+  schema_url: https://catalog.unl.edu/undergraduate/courses/acts/
+  max_concurrency: 1
+  crawl_depth: 3
 
 # - name: 
 #   root_url: 

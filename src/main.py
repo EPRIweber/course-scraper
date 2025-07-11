@@ -307,10 +307,10 @@ async def main():
         # 2.  Kick off scraping tasks
         # tasks = [process_schema(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
-        # tasks = [process_crawl(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
-        tasks = [process_scrape(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks)
+        tasks = [process_crawl(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks, return_exceptions=True)
+        # tasks = [process_scrape(run_id, src, storage) for src in sources]
+        # await asyncio.gather(*tasks, return_exceptions=True)
         # tasks = [process_classify(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
 
@@ -329,6 +329,11 @@ async def testing():
     print("generating test schema...")
     schema, usage = await generate_schema(test_source)
     print(schema)
+    check: ValidationCheck = await validate_schema(
+        schema=schema,
+        source=test_source
+    )
+    
 
 if __name__ == "__main__":
     asyncio.run(main())
