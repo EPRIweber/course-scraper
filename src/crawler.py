@@ -39,7 +39,7 @@ async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
         include_external_links=source.include_external,
         concurrency=source.max_concurrency,
         exclude_patterns=source.url_exclude_patterns,
-        base_exclude=str(source.url_base_exclude),
+        base_exclude=source.url_base_exclude,
         timeout=source.page_timeout_s
     )
     return sorted(urls)
@@ -60,10 +60,10 @@ async def _static_bfs_crawl(
     include_external_links: bool,
     concurrency: int,
     exclude_patterns: list[str],
-    base_exclude: str,
+    base_exclude: str | None,
     timeout: int
 ) -> Set[str]:
-    start = urlparse(base_exclude if base_exclude else root_url)
+    start = urlparse(base_exclude or root_url)
     domain = start.netloc
     root_path = (start.path.rstrip("/") + "/") if start.path else "/"
 
@@ -157,7 +157,7 @@ async def _static_bfs_crawl(
                 base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
                 soup = BeautifulSoup(html, "lxml")
                 for a in soup.find_all("a", href=True):
-                    href = a["href"].split("#")[0]
+                    href = a["href"].split("#", 1)[0]
                     if not href or href.startswith(("mailto:", "tel:")):
                         continue
 

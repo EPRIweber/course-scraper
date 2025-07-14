@@ -301,7 +301,7 @@ class SqlServerStorage(StorageBackend):
             def _bulk():
                 cur = self._conn.cursor()
                 try:
-                    cur.fast_executemany = True          # huge speed-up
+                    cur.fast_executemany = True
                     cur.executemany(sql, [(*row, source_id) for row in tvp_rows])
                     self._conn.commit()
                 except Exception:

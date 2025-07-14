@@ -307,10 +307,10 @@ async def main():
         # 2.  Kick off scraping tasks
         # tasks = [process_schema(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
-        tasks = [process_crawl(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        # tasks = [process_scrape(run_id, src, storage) for src in sources]
+        # tasks = [process_crawl(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [process_scrape(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks, return_exceptions=True)
         # tasks = [process_classify(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
 
