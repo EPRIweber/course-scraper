@@ -71,7 +71,7 @@ class SqlServerStorage(StorageBackend):
                     if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
                         # Communication link failure / timeout → reconnect once
                         self._conn.close()
-                        self._conn = pyodbc.connect(self._conn.getinfo(pyodbc.SQL_DRIVER_NAME), autocommit=False)
+                        self._conn = pyodbc.connect(self._conn_str, autocommit=False)
                         continue
                     raise
 
@@ -180,9 +180,13 @@ class SqlServerStorage(StorageBackend):
         async with self._lock:
             def _bulk_insert():
                 cur = self._conn.cursor()
-                for u in urls:
-                    cur.execute(sql, source_id, u)
-                self._conn.commit()
+                try:
+                    for u in urls:
+                        cur.execute(sql, source_id, u)
+                    self._conn.commit()
+                except Exception:
+                    self._conn.rollback()
+                    raise
             await self._run_sync(_bulk_insert)
     
     async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None:
@@ -192,22 +196,26 @@ class SqlServerStorage(StorageBackend):
         async with self._lock:
             def _run():
                 cur = self._conn.cursor()
-
-                if good_urls:
-                    # any url in *good_urls* is definitely still a target
-                    cur.executemany(
-                        "UPDATE urls SET is_target = 1 "
-                        "WHERE url_source_id = ? AND url_link = ?",
-                        [(source_id, u) for u in good_urls]
-                    )
-                if bad_urls:
-                    # pages crawled but produced nothing → toggle off
-                    cur.executemany(
-                        "UPDATE urls SET is_target = 0 "
-                        "WHERE url_source_id = ? AND url_link = ?",
-                        [(source_id, u) for u in bad_urls]
-                    )
-                self._conn.commit()
+                
+                try:
+                    if good_urls:
+                        # any url in *good_urls* is definitely still a target
+                        cur.executemany(
+                            "UPDATE urls SET is_target = 1 "
+                            "WHERE url_source_id = ? AND url_link = ?",
+                            [(source_id, u) for u in good_urls]
+                        )
+                    if bad_urls:
+                        # pages crawled but produced nothing → toggle off
+                        cur.executemany(
+                            "UPDATE urls SET is_target = 0 "
+                            "WHERE url_source_id = ? AND url_link = ?",
+                            [(source_id, u) for u in bad_urls]
+                        )
+                    self._conn.commit()
+                except Exception:
+                    self._conn.rollback()
+                    raise
 
             await self._run_sync(_run)
 
@@ -292,9 +300,13 @@ class SqlServerStorage(StorageBackend):
         async with self._lock:
             def _bulk():
                 cur = self._conn.cursor()
-                cur.fast_executemany = True          # huge speed-up
-                cur.executemany(sql, [(*row, source_id) for row in tvp_rows])
-                self._conn.commit()
+                try:
+                    cur.fast_executemany = True          # huge speed-up
+                    cur.executemany(sql, [(*row, source_id) for row in tvp_rows])
+                    self._conn.commit()
+                except Exception:
+                    self._conn.rollback()
+                    raise
 
             await self._run_sync(_bulk)
 
@@ -341,8 +353,12 @@ class SqlServerStorage(StorageBackend):
         async with self._lock:
             def _bulk():
                 cur = self._conn.cursor()
-                cur.fast_executemany = True
-                cur.executemany(sql, tvp_rows)
-                self._conn.commit()
+                try:
+                    cur.fast_executemany = True
+                    cur.executemany(sql, tvp_rows)
+                    self._conn.commit()
+                except Exception:
+                    self._conn.rollback()
+                    raise
 
             await self._run_sync(_bulk)
