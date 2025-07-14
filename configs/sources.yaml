@@ -28,8 +28,8 @@ sources:
 
 # CAN REQUEST FOR COURSES DIRECTLY IF NEEDED
 # - name: florida_state_university
-#   root_url: https://catalog.fsu.edu/             # FSU catalog homepage 
-#   schema_url: https://catalog.fsu.edu/preview_course.php?catoid=24&coid=26268  # Example course page 
+#   root_url: https://catalog.fsu.edu/
+#   schema_url: https://catalog.fsu.edu/preview_course.php?catoid=24&coid=26268
 #   type: "html"
 #   crawl_depth: 3
 
@@ -294,19 +294,19 @@ sources:
   max_concurrency: 1
   crawl_depth: 3
 
-# - name: cal_state_la
-#   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
-#   schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
-#   url_base_exclude: https://ecatalog.calstatela.edu
-#   max_concurrency: 1
-#   crawl_depth: 50
+- name: cal_state_la
+  root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
+  schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
+  url_base_exclude: https://ecatalog.calstatela.edu
+  max_concurrency: 1
+  crawl_depth: 50
 
-# - name: texas_tech
-#   root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
-#   schema_url: https://catalog.ttu.edu/preview_course_nopop.php?catoid=21&coid=120564
-#   url_base_exclude: https://catalog.ttu.edu
-#   max_concurrency: 1
-#   crawl_depth: 63
+- name: texas_tech
+  root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
+  schema_url: https://catalog.ttu.edu/preview_course_nopop.php?catoid=21&coid=120564
+  url_base_exclude: https://catalog.ttu.edu
+  max_concurrency: 1
+  crawl_depth: 63
 
 - name: university_of_nebraska_lincoln
   root_url: https://catalog.unl.edu/undergraduate/courses/
