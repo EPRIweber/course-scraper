@@ -266,13 +266,14 @@ async def validate_schema(
         # surface JSON decode errors, if any
         if json_errors:
             errors.extend(json_errors)
+        
+        at_least_one_good = False
 
         if not records:
             errors.append("No records extracted from the test page.")
         else:
             # check that each required field appears at least once
 
-            at_least_one_good = False
 
             for rec in records:
                 good_rec = True
