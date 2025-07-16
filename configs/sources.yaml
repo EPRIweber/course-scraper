@@ -67,6 +67,12 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 3
 
+- name: cornell
+  root_url: https://courses.cornell.edu/courses/
+  schema_url: https://courses.cornell.edu/courses/cheme/
+  max_concurrency: 1
+  crawl_depth: 4
+
 # - name: university_of_houston_undergraduate
 #   root_url: https://publications.uh.edu/content.php?catoid=52&navoid=19813
 #   schema_url: https://publications.uh.edu/preview_course_nopop.php?catoid=52&coid=271554
@@ -138,8 +144,8 @@ sources:
   crawl_depth: 22
 
 - name: adams_state_university
-  root_url: https://adams.catalog.acalog.com/content.php?catoid=78&navoid=4973
-  schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=78&coid=170837
+  root_url: https://adams.catalog.acalog.com/content.php?catoid=79&navoid=5036
+  schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=79&coid=172876
   url_base_exclude: https://adams.catalog.acalog.com
   max_concurrency: 1
   crawl_depth: 17
@@ -217,13 +223,6 @@ sources:
   max_concurrency: 1
   crawl_depth: 39
 
-- name: cornell
-  root_url: https://courses.cornell.edu/content.php?catoid=60&navoid=26201
-  schema_url: https://courses.cornell.edu/preview_course_nopop.php?catoid=60&coid=1098400
-  url_base_exclude: https://courses.cornell.edu
-  max_concurrency: 1
-  crawl_depth: 123
-
 - name: elizabeth_city_state_university_undergraduate
   root_url: https://catalog.ecsu.edu/content.php?catoid=5&navoid=180
   schema_url: https://catalog.ecsu.edu/preview_course_nopop.php?catoid=5&coid=3790
@@ -289,11 +288,11 @@ sources:
 # BEGIN MAP SCHOOLS
 
 
-# - name: oregon_state_university
-#   root_url: https://catalog.oregonstate.edu/courses/
-#   schema_url: https://catalog.oregonstate.edu/courses/ats/
-#   max_concurrency: 1
-#   crawl_depth: 3
+- name: oregon_state_university
+  root_url: https://catalog.oregonstate.edu/courses/
+  schema_url: https://catalog.oregonstate.edu/courses/ats/
+  max_concurrency: 1
+  crawl_depth: 3
 
 # - name: cal_state_la
 #   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
@@ -309,11 +308,11 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 63
 
-# - name: university_of_nebraska_lincoln
-#   root_url: https://catalog.unl.edu/undergraduate/courses/
-#   schema_url: https://catalog.unl.edu/undergraduate/courses/acts/
-#   max_concurrency: 1
-#   crawl_depth: 3
+- name: university_of_nebraska_lincoln
+  root_url: https://catalog.unl.edu/undergraduate/courses/
+  schema_url: https://catalog.unl.edu/undergraduate/courses/acts/
+  max_concurrency: 1
+  crawl_depth: 3
 
 # - name: kettering_university
 #   root_url: https://catalog.kettering.edu/coursesaz/

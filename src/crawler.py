@@ -66,10 +66,12 @@ async def _static_bfs_crawl(
     start = urlparse(base_exclude or root_url)
     domain = start.netloc
     root_path = (start.path.rstrip("/") + "/") if start.path else "/"
+    print(f'ROOT PATH: {root_path}')
+    print(f"START: {start}")
 
     def _inside_start_path(u: str) -> bool:
         p = urlparse(u)
-        return p.netloc == domain and p.path.startswith(root_path)
+        return p.netloc == domain and p.path.startswith(root_path) and (str(base_exclude or root_url) in u)
 
     class ExcludePatternFilter:
         def __init__(self, patterns):
@@ -97,6 +99,7 @@ async def _static_bfs_crawl(
         catalog_html = resp.text
     
         if "Modern Campus Catalog" in catalog_html:
+            print("Modern Campus Website Detected")
             while queue:
                 url, depth = queue.popleft()
                 if url in seen or depth >= max_crawl_depth:
