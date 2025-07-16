@@ -254,6 +254,14 @@ async def validate_schema(
     fields_missing: list[str] = []
     errors: list[str] = []
 
+    # with open("src/modern_campus.json", 'r') as f:
+    #     modern_campus_schema = json.load(f)
+    # if schema == modern_campus_schema:
+    #     log.info("Skipping modern campus schema")
+    #     return ValidationCheck(False, [], [])
+    
+    at_least_one_good = False
+
     try:
         # Scrape just the schema_url page
         records, _, _, json_errors = await scrape_urls(
@@ -261,13 +269,14 @@ async def validate_schema(
             schema=schema,
             source=source
         )
-        print(json.dumps(records, indent=2))
+        if records:
+            log.info("Sample record for schema validation:\n%s", json.dumps(records[0], indent=2))
+        else:
+            log.warning(f"No records returned for {source.name}")
 
         # surface JSON decode errors, if any
         if json_errors:
             errors.extend(json_errors)
-        
-        at_least_one_good = False
 
         if not records:
             errors.append("No records extracted from the test page.")

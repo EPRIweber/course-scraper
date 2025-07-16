@@ -102,6 +102,44 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
 
+async def process_test_schema(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
+    stage: Stage = Stage.SCHEMA
+
+    async def _log(st: Stage, msd: str):
+        logger.info(f"[{source.name}] {msd}")
+        await storage.log(run_id, source.source_id, int(st), msd)
+    
+    await _log(stage, f"RUNNING PROCESS_TEST_SCHEMA FOR {source.name}")
+
+    try:
+        # await _log(stage, "fetching / generating schema")
+        schema = await storage.get_schema(source.source_id)
+        # schema = None
+        if (not schema) or (not schema.get("baseSelector")):
+            await _log(stage, "No schema found")
+            return
+        else:
+            await _log(stage, f"Testing schema for {source.name}")
+            check: ValidationCheck = await validate_schema(
+                schema=schema,
+                source=source
+            )
+            if check.valid:
+                await _log(stage, "successfully validated schema")
+            else:
+                await _log(stage, "ERROR: Invalid schema")
+                if check.fields_missing:
+                    await _log(stage, "Fields Missing: \n" + '\n'.join(
+                        '- ' + field for field in check.fields_missing
+                    ))
+                if check.errors:
+                    errors_joined = "\n\n\n".join(check.errors)
+                    await _log(stage, f"Validation errors: \n{errors_joined}")
+                return
+    except Exception as exc:
+        await _log(stage, f"FAILED: {exc}")
+        logger.exception(exc)
+
 async def process_crawl(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
     stage: Stage = Stage.CRAWL
 
@@ -146,6 +184,11 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
             if not schema:
                 await _log(stage, "ERROR: Attempting to scrape without Schema")
                 return None
+            
+            with open("src/modern_campus.json", 'r') as f:
+                modern_campus_schema = json.load(f)
+            if schema == modern_campus_schema:
+                _log(stage, "Skipping modern campus schema")
 
             good_urls, bad_urls = [], []
             await _log(stage, f"attempting to get data...")
@@ -307,10 +350,12 @@ async def main():
         # 2.  Kick off scraping tasks
         # tasks = [process_schema(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
-        tasks = [process_crawl(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        # tasks = [process_scrape(run_id, src, storage) for src in sources]
+        # tasks = [process_test_schema(run_id, src, storage) for src in sources]
+        # await asyncio.gather(*tasks)
+        # tasks = [process_crawl(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [process_scrape(run_id, src, storage) for src in sources]
+        await asyncio.gather(*tasks, return_exceptions=True)
         # tasks = [process_classify(run_id, src, storage) for src in sources]
         # await asyncio.gather(*tasks)
 
