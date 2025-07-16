@@ -64,14 +64,15 @@ async def _static_bfs_crawl(
     timeout: int
 ) -> Set[str]:
     start = urlparse(base_exclude or root_url)
+    # print(">>> parsing:", base_exclude or root_url)
     domain = start.netloc
     root_path = (start.path.rstrip("/") + "/") if start.path else "/"
-    print(f'ROOT PATH: {root_path}')
-    print(f"START: {start}")
+    # print(f'ROOT PATH: {root_path}')
+    # print(f"START: {start}")
 
     def _inside_start_path(u: str) -> bool:
         p = urlparse(u)
-        return p.netloc == domain and p.path.startswith(root_path) and (str(base_exclude or root_url) in u)
+        return p.netloc == domain and p.path.startswith(root_path)
 
     class ExcludePatternFilter:
         def __init__(self, patterns):

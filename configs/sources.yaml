@@ -67,11 +67,11 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 3
 
-- name: cornell
-  root_url: https://courses.cornell.edu/courses/
-  schema_url: https://courses.cornell.edu/courses/cheme/
-  max_concurrency: 1
-  crawl_depth: 4
+# - name: cornell
+#   root_url: https://courses.cornell.edu/courses/
+#   schema_url: https://courses.cornell.edu/courses/cheme/
+#   max_concurrency: 1
+#   crawl_depth: 4
 
 # - name: university_of_houston_undergraduate
 #   root_url: https://publications.uh.edu/content.php?catoid=52&navoid=19813
@@ -334,26 +334,73 @@ sources:
   max_concurrency: 1
   crawl_depth: 22
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+- name: Memorial University of Newfoundland
+  root_url: https://www.mun.ca/university-calendar/
+  schema_url: https://www.mun.ca/university-calendar/st-johns-campus/faculty-of-medicine/12/2/
+  max_concurrency: 1
+  crawl_depth: 5
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+- name: Penn State
+  root_url: https://bulletins.psu.edu/university-course-descriptions/
+  schema_url: https://bulletins.psu.edu/university-course-descriptions/undergraduate/be/
+  max_concurrency: 1
+  crawl_depth: 4
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+- name: Stony Brook University undergraduate
+  root_url: https://catalog.stonybrook.edu/content.php?catoid=7&navoid=225
+  schema_url: https://catalog.stonybrook.edu/preview_course_nopop.php?catoid=7&coid=8146
+  url_base_exclude: https://catalog.stonybrook.edu
+  max_concurrency: 1
+  crawl_depth: 35
+
+- name: Stony Brook University graduate
+  root_url: https://catalog.stonybrook.edu/content.php?catoid=4&navoid=223
+  schema_url: https://catalog.stonybrook.edu/preview_course_nopop.php?catoid=4&coid=1320
+  url_base_exclude: https://catalog.stonybrook.edu
+  max_concurrency: 1
+  crawl_depth: 38
+
+- name: University of Buffalo undergraduate
+  root_url: https://catalogs.buffalo.edu/content.php?catoid=17&navoid=862
+  schema_url: https://catalogs.buffalo.edu/preview_course_nopop.php?catoid=17&coid=160786
+  url_base_exclude: https://catalogs.buffalo.edu
+  max_concurrency: 1
+  crawl_depth: 41
+
+- name: University of Buffalo graduate
+  root_url: https://catalogs.buffalo.edu/content.php?catoid=12&navoid=721
+  schema_url: https://catalogs.buffalo.edu/preview_course_nopop.php?catoid=12&coid=78289
+  url_base_exclude: https://catalogs.buffalo.edu
+  max_concurrency: 1
+  crawl_depth: 48
+
+- name: 
+  root_url: 
+  schema_url: 
+  url_base_exclude: 
+  max_concurrency: 
+  crawl_depth: 
+
+- name: 
+  root_url: 
+  schema_url: 
+  url_base_exclude: 
+  max_concurrency: 
+  crawl_depth: 
+
+- name: 
+  root_url: 
+  schema_url: 
+  url_base_exclude: 
+  max_concurrency: 
+  crawl_depth: 
+
+- name: 
+  root_url: 
+  schema_url: 
+  url_base_exclude: 
+  max_concurrency: 
+  crawl_depth: 
 
 # - name: 
 #   root_url: 
