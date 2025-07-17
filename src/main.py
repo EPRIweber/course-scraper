@@ -185,10 +185,11 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
                 await _log(stage, "ERROR: Attempting to scrape without Schema")
                 return None
             
-            with open("src/modern_campus.json", 'r') as f:
-                modern_campus_schema = json.load(f)
-            if schema == modern_campus_schema:
-                _log(stage, "Skipping modern campus schema")
+            # with open("src/modern_campus.json", 'r') as f:
+            #     modern_campus_schema = json.load(f)
+            # if schema == modern_campus_schema:
+            #     await _log(stage, "Skipping modern campus schema")
+            #     return None
 
             good_urls, bad_urls = [], []
             await _log(stage, f"attempting to get data...")
