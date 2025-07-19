@@ -74,54 +74,55 @@ async def classify_courses(
         
         for (cid, _, _), resp in zip(batch, responses1):
             labels = [lbl.strip() for lbl in resp['completion_text'].replace("\n",",").split(",") if lbl.strip()]
-            primary.append((cid, labels))
+            if str(cid) != '0':
+                primary.append((cid, labels))
             usage1 += resp.get('total_tokens', 0) or 0
 
-    # --- Second pass: subtree classification ---
-    taxonomy = load_full_taxonomy()
-    followup_tasks = []
-    ids_for_task: List[str] = []
-    for cid, labels in primary:
-        if not labels:
-            continue
-        subtree_md = format_subtree(labels, taxonomy)
-        prompt = [
-            {"role":"system","content":taxonomy_sys_prompt},
-            {"role":"user","content":(
-                f"**Second Step:**\n\nHere are subclass options under ID(s) {', '.join(labels)}:\n\n"
-                f"{subtree_md}\n\n"
-                f"## Course to classify\n"
-                f"Title: {title_map[cid]}\n"
-                f"Description: {desc_map[cid]}\n\n"
-                "Instruction: Respond only with comma-separated subclass IDs."
-            )}
-        ]
-        followup_tasks.append(
-            _get_chat_completion_async(
-                async_client,
-                model=model,
-                messages=prompt,
-                max_tokens=30000,
-                temperature=0.0
-            )
-        )
-        ids_for_task.append(cid)
+    # # --- Second pass: subtree classification ---
+    # taxonomy = load_full_taxonomy()
+    # followup_tasks = []
+    # ids_for_task: List[str] = []
+    # for cid, labels in primary:
+    #     if not labels:
+    #         continue
+    #     subtree_md = format_subtree(labels, taxonomy)
+    #     prompt = [
+    #         {"role":"system","content":taxonomy_sys_prompt},
+    #         {"role":"user","content":(
+    #             f"**Second Step:**\n\nHere are subclass options under ID(s) {', '.join(labels)}:\n\n"
+    #             f"{subtree_md}\n\n"
+    #             f"## Course to classify\n"
+    #             f"Title: {title_map[cid]}\n"
+    #             f"Description: {desc_map[cid]}\n\n"
+    #             "Instruction: Respond only with comma-separated subclass IDs."
+    #         )}
+    #     ]
+    #     followup_tasks.append(
+    #         _get_chat_completion_async(
+    #             async_client,
+    #             model=model,
+    #             messages=prompt,
+    #             max_tokens=30000,
+    #             temperature=0.0
+    #         )
+    #     )
+    #     ids_for_task.append(cid)
 
-    responses2 = await asyncio.gather(*followup_tasks) if followup_tasks else []
-    usage2 = sum(resp.get('total_tokens', 0) or 0 for resp in responses2)
+    # responses2 = await asyncio.gather(*followup_tasks) if followup_tasks else []
+    # usage2 = sum(resp.get('total_tokens', 0) or 0 for resp in responses2)
 
-    # Combine primary + sub-labels
-    final: List[Tuple[str,List[str]]] = []
-    for cid, labels in primary:
-        if cid in ids_for_task:
-            idx = ids_for_task.index(cid)
-            sub_labels = [lbl.strip() for lbl in responses2[idx]['completion_text'].split(',') if lbl.strip()]
-            combined = labels + sub_labels
-        else:
-            combined = labels
-        final.append((cid, combined))
+    # # Combine primary + sub-labels
+    # final: List[Tuple[str,List[str]]] = []
+    # for cid, labels in primary:
+    #     if cid in ids_for_task:
+    #         idx = ids_for_task.index(cid)
+    #         sub_labels = [lbl.strip() for lbl in responses2[idx]['completion_text'].split(',') if lbl.strip()]
+    #         combined = labels + sub_labels
+    #     else:
+    #         combined = labels
+    #     final.append((cid, combined))
 
-    return final, usage1 + usage2
+    return primary, usage1
 
 class CompletionResult(TypedDict):
     """EPRI-customized typed dictionary representing a chat completion result"""
