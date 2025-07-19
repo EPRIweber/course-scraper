@@ -1,4 +1,3 @@
-- **0**: Other
 - **1**: Understanding hydrogen properties
   - **1.1**: Chemical Properties of Hydrogen
     - **1.1.1**: Hydrogen's Forms and Structure
