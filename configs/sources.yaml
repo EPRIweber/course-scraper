@@ -36,7 +36,7 @@ sources:
 # - name: duke_university
 #   root_url: https://registrar.duke.edu/bulletins/
 #   schema_url: https://undergraduate.bulletins.duke.edu/courses/0292481
-#   type: "html"
+#   include_external: True
 #   crawl_depth: 500
 
 # - name: rice_university
@@ -285,7 +285,7 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 19
 
-# - name: furman_university_undergraduate
+# - name: furman_university_graduate
 #   root_url: https://catalog.furman.edu/content.php?catoid=30&navoid=1705
 #   schema_url: https://catalog.furman.edu/preview_course_nopop.php?catoid=30&coid=68286
 #   url_base_exclude: https://catalog.furman.edu
@@ -427,26 +427,26 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 59
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+# - name: University of Delaware Undergraduate
+#   root_url: https://catalog.udel.edu/content.php?catoid=94&navoid=34643
+#   schema_url: https://catalog.udel.edu/preview_course_nopop.php?catoid=94&coid=685469
+#   url_base_exclude: https://catalog.udel.edu
+#   max_concurrency: 1
+#   crawl_depth: 50
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+# - name: University of Delaware Graduate
+#   root_url: https://catalog.udel.edu/content.php?catoid=93&navoid=30539
+#   schema_url: https://catalog.udel.edu/preview_course_nopop.php?catoid=93&coid=617598
+#   url_base_exclude: https://catalog.udel.edu
+#   max_concurrency: 1
+#   crawl_depth: 34
 
-# - name: 
-#   root_url: 
-#   schema_url: 
-#   url_base_exclude: 
-#   max_concurrency: 
-#   crawl_depth: 
+# - name: Howard University
+#   root_url: https://catalog.howardcollege.edu/content.php?catoid=24&navoid=1312
+#   schema_url: https://catalog.howardcollege.edu/preview_course_nopop.php?catoid=24&coid=31959
+#   url_base_exclude: https://catalog.howardcollege.edu
+#   max_concurrency: 1
+#   crawl_depth: 11
 
 # - name: 
 #   root_url: 
