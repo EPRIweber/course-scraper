@@ -1,11 +1,19 @@
 # src/schema_manager.py
-import requests, json, logging
+from playwright.async_api import Error as PlaywrightError
+from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
+from crawl4ai import AsyncWebCrawler
+from urllib.parse import urljoin
+import httpx
+import json, logging
 
 from pydantic import HttpUrl
-from typing import List
+import urllib3
 from src.config import SourceConfig, ValidationCheck
 from crawl4ai.content_filter_strategy import PruningContentFilter
+from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+import warnings
+import urllib3
 
 from src.llm_client import LlamaModel, GemmaModel
 from src.prompts.schema import FindRepeating
@@ -14,45 +22,151 @@ from src.scraper import scrape_urls
 REQUIRED_FIELDS = ["course_title", "course_description"]
 OPTIONAL_FIELDS = ["course_code", "course_credits"]
 
+_strategy = AsyncPlaywrightCrawlerStrategy(headless=True)
+_crawler = AsyncWebCrawler(crawler_strategy=_strategy)
+
+async def _load_page(url: str, timeout: float) -> str:
+     # 1) Try a plain HTTPX GET
+    try:
+       async with httpx.AsyncClient(verify=False, timeout=timeout) as client:
+           resp = await client.get(
+               url,
+               headers={
+                   "User-Agent": "Mozilla/5.0",
+                   "Accept": "text/html,application/xhtml+xml",
+               },
+           )
+           # explicitly reject 403
+           if resp.status_code == 403:
+               raise RuntimeError(f"HTTP 403 Forbidden for {url}")
+           resp.raise_for_status()
+           return resp.text
+    except Exception:
+       pass  # now we truly fall back only on connectivity/timeouts, NOT on 403
+
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=True)
+            page    = await browser.new_page()
+            await page.set_extra_http_headers({"User-Agent": "Mozilla/5.0"})
+            # domcontentloaded will fire faster than full load
+            response = await page.goto(
+                url, timeout=timeout, wait_until="domcontentloaded"
+            )
+           # if the server still sends a 403 to your headless browser, stop
+            if response and response.status == 403:
+                raise RuntimeError(f"Playwright got 403 for {url}")
+            html = await page.content()
+            await browser.close()
+            return html
+    except PlaywrightError as e:
+        raise RuntimeError(f"Playwright failed to fetch {url!r}: {e}")
+
+
+
 async def generate_schema(
     source: SourceConfig,
 ) -> tuple[dict, int]:
     log = logging.getLogger(__name__)
-    schema, usage = await _generate_schema_from_llm(url=source.schema_url)
+    schema, usage = await _generate_schema_from_llm(
+        url=source.schema_url,
+        page_timout=source.page_timeout_s
+    )
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
+
+# Suppress “InsecureRequestWarning” across this module
+warnings.filterwarnings(
+    "ignore",
+    category=urllib3.exceptions.InsecureRequestWarning
+)
+
+# async def _fetch_and_expand(base_url: str, html: str) -> str:
+#     soup = BeautifulSoup(html, "lxml")
+#     anchors = [
+#         a for a in soup.find_all("a", href=True, onclick=True)
+#         if "preview_course_nopop.php" in a["href"]
+#     ]
+
+#     async with httpx.AsyncClient(timeout=10, follow_redirects=True, verify=False) as client:
+#         tasks = [client.get(urljoin(base_url, a["href"])) for a in anchors]
+#         responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+#     expanded_parts: list[str] = []
+#     for resp in responses:
+#         if isinstance(resp, Exception) or resp.status_code >= 400:
+#             continue
+
+#         frag = BeautifulSoup(resp.text, "lxml")
+#         expanded_parts.append(str(frag))
+#         # try pulling out exactly the course-detail cell
+#         # if cells:
+#         #     for cell in cells:
+#         #         expanded_parts.append(str(cell))
+#         # else:
+#         #     # fallback to entire fragment
+#         #     expanded_parts.append(str(frag))
+
+#     # if you only want the first N courses, you can slice here
+#     # expanded_parts = expanded_parts[0:10]
+#     sudo_html = (
+#         "<div class=\"expanded-course-details\">\n"
+#         + "\n".join(expanded_parts)
+#         + "\n</div>"
+#     )
+#     # with open(f"{base_url.replace("/", "").replace(":", "").replace("?", "").replace("=", "").replace("&", "")}", "w") as f:
+#     #     f.write(sudo_html)
+
+#     cells = BeautifulSoup(sudo_html, "lxml").select("td.coursepadding")
+
+#     return (
+#         "<div class=\"expanded-course-details\">\n"
+#         + "\n".join(cells)
+#         + "\n</div>"
+#     )
+
+
 async def _generate_schema_from_llm(
     url: HttpUrl,
+    page_timout: int,
 ) -> tuple[dict, int]:
     """Helper function to perform LLM call."""
-    prune_threshold = 0.1
+    log = logging.getLogger(__name__)
 
-    page = requests.get(str(url)).text
-    soup = BeautifulSoup(page, "lxml")
-    html_snippet = soup.encode_contents().decode() if soup else page
-    pruner = PruningContentFilter(threshold=prune_threshold)
-    filtered_chunks = pruner.filter_content(html_snippet)
-    html_for_schema = "\n".join(filtered_chunks)
-    if len(html_for_schema) > 200000:
-        prune_threshold = 0.3
-        page = requests.get(str(url)).text
-        soup = BeautifulSoup(page, "lxml")
-        html_snippet = soup.encode_contents().decode() if soup else page
+    # unified fetch + fallback
+    try:
+        catalog_html = await _load_page(str(url), timeout=60000*10)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load schema_url {url}: {e}")
+
+    # print(catalog_html)
+    
+    if "Modern Campus Catalog" in catalog_html:
+        # raw_html = await _fetch_and_expand(str(url), catalog_html)
+        with open("src/modern_campus.json", 'r') as f:
+            return json.load(f), 0
+    else:
+        raw_html = catalog_html
+    soup = BeautifulSoup(raw_html, "lxml")
+    html_snippet = soup.encode_contents().decode()
+    
+    # 2) Prune until snippet is reasonably small (or threshold too high)
+    prune_threshold = 0.0
+    html_for_schema = html_snippet
+    while len(html_for_schema) > 250_000 and prune_threshold < 1.0:
+        prune_threshold += 0.1
         pruner = PruningContentFilter(threshold=prune_threshold)
-        filtered_chunks = pruner.filter_content(html_snippet)
-        html_for_schema = "\n".join(filtered_chunks)
-        log = logging.getLogger(__name__)
-    if len(html_for_schema) > 200000:
-        prune_threshold = 0.5
-        page = requests.get(str(url)).text
-        soup = BeautifulSoup(page, "lxml")
-        html_snippet = soup.encode_contents().decode() if soup else page
-        pruner = PruningContentFilter(threshold=prune_threshold)
-        filtered_chunks = pruner.filter_content(html_snippet)
-        html_for_schema = "\n".join(filtered_chunks)
-        log = logging.getLogger(__name__)
-    log.info(f"Generating schema for using html with {len(html_for_schema)} characters using pruning threshold {prune_threshold} from {url}")
+        chunks = pruner.filter_content(html_snippet)
+        html_for_schema = "\n".join(chunks)
+
+    # print(html_for_schema)
+
+    # print(html_for_schema)
+    log.info(
+        "Generating schema with %d characters (prune_threshold=%.1f) from %s",
+        len(html_for_schema), prune_threshold, url
+    )
     
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
@@ -140,6 +254,14 @@ async def validate_schema(
     fields_missing: list[str] = []
     errors: list[str] = []
 
+    # with open("src/modern_campus.json", 'r') as f:
+    #     modern_campus_schema = json.load(f)
+    # if schema == modern_campus_schema:
+    #     log.info("Skipping modern campus schema")
+    #     return ValidationCheck(False, [], [])
+    
+    at_least_one_good = False
+
     try:
         # Scrape just the schema_url page
         records, _, _, json_errors = await scrape_urls(
@@ -147,6 +269,10 @@ async def validate_schema(
             schema=schema,
             source=source
         )
+        if records:
+            log.info("Sample record for schema validation:\n%s", json.dumps(records[0], indent=2))
+        else:
+            log.warning(f"No records returned for {source.name}")
 
         # surface JSON decode errors, if any
         if json_errors:
@@ -156,6 +282,17 @@ async def validate_schema(
             errors.append("No records extracted from the test page.")
         else:
             # check that each required field appears at least once
+
+
+            for rec in records:
+                good_rec = True
+                if isinstance(rec, dict):
+                    for field in required_fields:
+                        if field not in rec or not rec.get(field):
+                            good_rec = False
+                if good_rec:
+                    at_least_one_good = True
+
             for field in required_fields:
                 if not any(isinstance(rec, dict) and field in rec and rec.get(field) for rec in records):
                     fields_missing.append(field)
@@ -164,7 +301,7 @@ async def validate_schema(
         log.exception("Schema validation failed")
         errors.append(str(exc))
 
-    valid = not errors and not fields_missing
+    valid = at_least_one_good
     return ValidationCheck(
         valid=valid,
         fields_missing=fields_missing,

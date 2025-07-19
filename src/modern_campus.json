@@ -1,0 +1,16 @@
+{
+  "name": "Course Details",
+  "baseSelector": "td.block_content_outer",
+  "fields": [
+    {
+      "name": "course_title",
+      "selector": "table > tbody > tr > td > h1#course_preview_title",
+      "type": "text"
+    },
+    {
+      "name": "course_description",
+      "selector": "table > tbody > tr > td",
+      "type": "text"
+    }
+  ]
+}

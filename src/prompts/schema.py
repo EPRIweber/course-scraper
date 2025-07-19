@@ -23,7 +23,7 @@ class FindRepeating(PromptBase):
         self.html = html
         self.role = role
 
-        self.block_description = f"Within the given HTML, first you must identify the baseSelector to select distinct {repeating_block} instances." if repeating_block else "First you must identify the baseSelector to select the target repeating block."
+        self.block_description = f"Within the given HTML, first you must identify the baseSelector to select distinct {repeating_block} instances. If only one instance of {repeating_block} occurs on the page, then just select that one." if repeating_block else "First you must identify the baseSelector to select the target repeating block."
         self.fields_description = "The fields extracted for this schema **MUST** come from the field described below." if required_fields else ("You may use the fields provided below as examples for what to extract:" if (required_fields or optional_fields) else "It is up to you to decide the fields for extracting" )
         required_formatted = "\n".join(f" - {f}" for f in required_fields) if required_fields else None
         self.required_description = f"\n# The repeating block will **ALWAYS** have the required fields:\n{required_formatted}" if required_fields else None
@@ -74,6 +74,7 @@ Generating this HTML manually is not feasible, so you need to generate the JSON 
 
 IMPORTANT SELF-CHECK:
 - **Selector reliability:** Ensure your schema remains reliable by avoiding selectors that appear to generate dynamically and are not dependable. You want a reliable schema, as it consistently returns the same data even after many page reloads.
+- **Data Reliability**: You **MUST** always error on the side of collecting as much data as possible
 - **Scoped matching:** Verify that all child fields of the baseSelector are actually contained inside of the base selector, ensuring that document.querySelectorAll(baseSelector + ' ' + selector) returns at least one element.
 - **Strict output:** Return a JSON schema that follows the specified format precisely. Only output valid JSON schema, no explanatory text.
 """
