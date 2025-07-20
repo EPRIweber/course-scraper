@@ -12,6 +12,7 @@ from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
+from crawl4ai.utils import get_content_of_website_optimized
 
 from src.crawler import crawl_and_collect_urls
 
@@ -85,16 +86,17 @@ async def get_markdown_snippet(
                 markdown_generator=DefaultMarkdownGenerator(
                     content_filter=PruningContentFilter(threshold=0.5),
                     options={"ignore_links": True},
-                ),
+                )
             ),
         )
         if not result.success:
+            logger.warning("Failed to fetch or parse %s", url)
             return None
         snippet = result.markdown.fit_markdown or ""
         return snippet[:limit]
     except Exception as e:
         logger.exception("Failed to get markdown snippet for %s", url)
-        return None
+        return e
 
 
 def find_course_link(html: str, base_url: str) -> Optional[str]:
@@ -104,13 +106,16 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
         # lower = href.lower()
         # if any(k in lower for k in ["preview_course", "courses", "coursedog"]):
         return urljoin(base_url, href)
+    logger.warning("No course link found in %s", base_url)
     return None
 
 
 async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str, int]]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
-    logger.debug("REACHED llm_select_root")
+    print("⟳ pages passed into llm_select_root:", pages)
+    logger.log("REACHED llm_select_root")
     if not pages:
+        logger.warning("No pages provided to llm_select_root")
         return None
     prompt = CatalogRootPrompt(school, pages)
     llm = GemmaModel()
@@ -126,15 +131,15 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         }
     })
     try:
-        resp = await llm.chat(
-            [
-                {"role": "system", "content": prompt.system()},
-                {"role": "user", "content": prompt.user()},
-            ]
-        )
         sys_p = prompt.system()
         user_p = prompt.user()
-        logger.debug("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
+        resp = await llm.chat(
+            [
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": user_p},
+            ]
+        )
+        logger.log("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -156,14 +161,19 @@ async def llm_select_schema(
     candidates: List[str],
     crawler: Optional[AsyncWebCrawler] = None,
 ) -> Optional[tuple[str, int]]:
+    print(candidates)
     pages = []
-    for url in candidates[:3]:
+    for url in candidates:
         snippet = await get_markdown_snippet(url, crawler=crawler)
         if snippet:
             pages.append({"url": url, "snippet": snippet})
     if not pages:
+        logger.warning("No pages provided to llm_select_schema")
         return None
     prompt = CatalogSchemaPrompt(school, root_url, pages)
+    sys_p = prompt.system()
+    user_p = prompt.user()
+    logger.log("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
     llm = GemmaModel()
     llm.set_response_format({
         "type": "json_object",
@@ -179,13 +189,10 @@ async def llm_select_schema(
     try:
         resp = await llm.chat(
             [
-                {"role": "system", "content": prompt.system()},
-                {"role": "user", "content": prompt.user()},
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": user_p},
             ]
         )
-        sys_p = prompt.system()
-        user_p = prompt.user()
-        logger.debug("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -203,10 +210,12 @@ async def llm_select_schema(
 async def analyze_candidate(url: str, crawler: AsyncWebCrawler) -> Optional[Tuple[str, str]]:
     html = await fetch_html(url, crawler)
     if html is None:
+        logger.warning("Failed to fetch HTML for candidate %s", url)
         return None
     course_url = find_course_link(html, url)
     if course_url:
         return url, course_url
+    logger.warning("No course link found in candidate %s", url)
     return None
 
 
@@ -234,6 +243,11 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
                 ),
             ),
         )
+        for res in results_snip:
+            print(res.url,
+                "success=", res.success,
+                "markdown_len=", len((res.markdown.fit_markdown or "")))
+
         pages = [
             {"url": res.url, "snippet": res.markdown.fit_markdown}
             for res in results_snip
@@ -252,6 +266,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
                 if result:
                     root_url, schema_url = result
                     return root_url, schema_url
+            logger.warning("No valid candidates found for %s", school)
             return None
 
         temp_source = SourceConfig(
@@ -270,6 +285,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
             result = await analyze_candidate(url, crawler)
             if result:
                 return result
+        logger.warning("No schema URL found for %s", school)
     return None
 
 
