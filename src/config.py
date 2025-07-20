@@ -1,4 +1,6 @@
 # src/config.py
+"""Pydantic models and utilities for loading source configuration."""
+
 from dataclasses import dataclass
 from pydantic import BaseModel, HttpUrl, Extra
 from typing import List, Optional

@@ -1,4 +1,6 @@
 # src/models.py
+"""Typed data models used throughout the scraper."""
+
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 from datetime import datetime, timezone

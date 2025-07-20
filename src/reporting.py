@@ -1,4 +1,6 @@
 # src/reporting.py
+"""Helpers for printing job summaries to the log."""
+
 import logging
 from src.models import JobSummary
 

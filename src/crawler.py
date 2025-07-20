@@ -1,4 +1,11 @@
 # src/crawler.py
+"""URL discovery utilities.
+
+This module performs a breadth-first crawl starting from a source's root URL.
+It collects pages that likely contain course information while respecting depth
+limits and optional exclusion patterns.
+"""
+
 import asyncio
 from collections import deque
 import re
@@ -16,6 +23,9 @@ from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 import urllib3
 
 from .config import SourceConfig
+from .render_utils import (
+    fetch_with_fallback
+)
 
 logging.getLogger("src.crawler").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -109,7 +119,7 @@ async def _static_bfs_crawl(
 
                 try:
                     logger.debug(f"Crawling URL (depth {depth}): {url}")
-                    html = await _fetch_with_fallback(url, client, sem)
+                    html = await fetch_with_fallback(url, client, sem)
                 except Exception:
                     # already logged in helper
                     continue
@@ -153,7 +163,7 @@ async def _static_bfs_crawl(
 
                 try:
                     logger.debug(f"Crawling URL (depth {depth}): {url}")
-                    html = await _fetch_with_fallback(url, client, sem)
+                    html = await fetch_with_fallback(url, client, sem)
                 except Exception:
                     # already logged in helper
                     continue
@@ -176,89 +186,4 @@ async def _static_bfs_crawl(
 
     return seen
 
-# ———————————————————————————————————————————————————————————————
-# fetch helpers
-# ———————————————————————————————————————————————————————————————
-
-def _get_playwright_crawler():
-    global _strategy, _crawler
-    if not _strategy:
-        _strategy = AsyncPlaywrightCrawlerStrategy(headless=True, logger=logger)
-        _crawler = AsyncWebCrawler(crawler_strategy=_strategy)
-    return _crawler, _strategy
-
-async def close_playwright():
-    if _strategy:
-        await _strategy.close()
-
-async def _fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
-    """
-    Try httpx GET first; on RequestError or certain status codes, 
-    fall back to Crawl4AI Playwright render.
-    """
-    try:
-        return await _fetch_static(url, client, sem)
-    except (httpx.RequestError, httpx.HTTPStatusError) as e:
-        code = getattr(e, "response", None) and e.response.status_code
-        # treat connect/read timeouts, 403,404,429 as retryable
-        if isinstance(e, httpx.RequestError) or code in {403, 404, 429}:
-            logger.warning(f"Falling back to Playwright for {url}: {str(e)}")
-            try:
-                return await _fetch_dynamic(url)
-            except Exception as de:
-                logger.error(f"Playwright fetch failed for {url}: {de}")
-        else:
-            logger.warning(f"Non-retryable HTTP error for {url}: {str(e)}")
-        raise
-
-async def _fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
-    """Simple httpx fetch with semaphore for concurrency control, with retry/backoff on 429/503."""
-    backoff = 1.0
-    max_retries = 5
-    for attempt in range(1, max_retries + 1):
-        async with sem:
-            resp = await client.get(
-                url,
-                headers={
-                    "User-Agent": "Mozilla/5.0",
-                    "Accept": "text/html,application/xhtml+xml"
-                }
-            )
-        # if not a retryable status, or success, break or error
-        if resp.status_code < 400:
-            return resp.text
-        if resp.status_code not in (403, 429, 503):
-            resp.raise_for_status()
-
-        # rate-limited or service unavailable → back off and retry
-        logger.warning(
-            "Received %d from %s, backing off %.1fs (attempt %d/%d)",
-            resp.status_code, url, backoff, attempt, max_retries
-        )
-        # jitter ± 0–1s
-        await asyncio.sleep(backoff + random.random())
-        backoff *= 2
-
-    # if we exhaust retries, do one final request to raise the right error
-    async with sem:
-        resp = await client.get(url, headers={
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "text/html,application/xhtml+xml"
-        })
-    resp.raise_for_status()
-    return resp.text
-
-async def _fetch_dynamic(url: str) -> str:
-    """
-    Use Crawl4AI's Playwright strategy to render JS and return fully
-    hydrated HTML.  Headless by default.
-    """
-    logger.debug(f"Dynamic fetch for URL: {url!r}")
-    crawler, _ = _get_playwright_crawler()
-    result = await crawler.arun([{"url": url}])
-    logger.debug("Raw playwright result: %s", result)
-    # result is a list of dicts; each has a .response.html field
-    html = result.html or ""
-    if not html:
-        raise RuntimeError("Empty HTML from dynamic fetch")
-    return html
+# fetch helpers are provided by src.render_utils

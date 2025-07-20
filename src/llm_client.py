@@ -1,4 +1,6 @@
 # src/llm_client.py
+"""Wrappers around various Large Language Model APIs."""
+
 import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional

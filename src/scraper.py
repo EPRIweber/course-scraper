@@ -1,4 +1,11 @@
 # src/scraper.py
+"""HTML page scraping helpers.
+
+Given a list of URLs and a JSON/CSS schema this module uses Crawl4AI to extract
+structured course information. The helpers return parsed records along with sets
+of good and bad URLs for further processing.
+"""
+
 import json
 import logging
 from pathlib import Path
