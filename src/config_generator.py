@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 from typing import List, Optional, Tuple
+from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
@@ -27,7 +28,7 @@ async def google_search(query: str, *, count: int = 5) -> List[str]:
     if not GOOGLE_API_KEY or not GOOGLE_CX:
         raise RuntimeError("GOOGLE_API_KEY and GOOGLE_CX environment variables are required")
     params = {"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": query, "num": count}
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=60000 * 10) as client:
         resp = await client.get(GOOGLE_CSE_ENDPOINT, params=params)
         resp.raise_for_status()
         data = resp.json()
@@ -50,7 +51,7 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
         href = a["href"]
         lower = href.lower()
         if any(k in lower for k in ["preview_course", "courses", "coursedog"]):
-            return httpx.URL(href, base=base_url).human_repr()
+            return urljoin(base_url, href)
     return None
 
 async def analyze_candidate(url: str) -> Optional[Tuple[str, str]]:
@@ -103,9 +104,16 @@ async def generate_for_schools(names: List[str]) -> List[SourceConfig]:
 
 def update_sources_file(new_sources: List[SourceConfig]) -> None:
     data = {}
-    existing = data.get("sources", [])
+    existing = data.setdefault("sources", [])
     for src in new_sources:
-        existing.append(src.model_dump(exclude_defaults=True, exclude_none=True))
+        existing.append(
+            src.model_dump(
+                mode="json",
+                exclude_defaults=True,
+                exclude_none=True
+            )
+        )
+
     data["sources"] = existing
     print(yaml.safe_dump(data, sort_keys=False))
     with open('test_source_generation.yaml', "w") as f:
@@ -120,7 +128,7 @@ async def async_main() -> None:
     with open('configs/new_schools.csv', 'r', newline='') as file:
         csv_reader = csv.reader(file)
         for row in csv_reader:
-            names.append(row)
+            names.append(row[0])
 
     sources = await generate_for_schools(names)
     if not sources:
