@@ -12,6 +12,8 @@ from urllib.parse import urljoin
 import httpx
 from bs4 import BeautifulSoup
 
+from src.crawler import crawl_and_collect_urls
+
 from .render_utils import fetch_page
 import yaml
 from crawl4ai.utils import get_content_of_website_optimized
@@ -129,7 +131,6 @@ async def llm_select_schema(
             pages.append({"url": url, "snippet": snippet})
     if not pages:
         return None
-    print(f"Attempting to generate using:\n\n{pages}")
     prompt = CatalogSchemaPrompt(school, root_url, pages)
     llm = GemmaModel()
     llm.set_response_format({
@@ -143,6 +144,7 @@ async def llm_select_schema(
             "strict": True
         }
     })
+    print(f"Attempting to generate using:\n\n{prompt.user()}")
     try:
         resp = llm.chat(
             [
@@ -194,16 +196,14 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
                 return root_url, schema_url
         return None
 
-    # gather potential course pages from the selected root
-    try:
-        html = await fetch_html(root_url)
-    except Exception:
-        return None
-    soup = BeautifulSoup(html, "html.parser")
-    links = []
-    for a in soup.find_all("a", href=True):
-        href = urljoin(root_url, a["href"])
-        links.append(href)
+    # gather potential course pages by crawling the entire catalog
+    temp_source = SourceConfig(
+       source_id=f"TEMP_{school}", 
+       name=school, 
+       root_url=root_url, 
+       schema_url=root_url
+    )
+    links = await crawl_and_collect_urls(temp_source)
     schema_url, usage = await llm_select_schema(school, root_url, links)
     if schema_url:
         return root_url, schema_url
