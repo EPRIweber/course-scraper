@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from .render_utils import fetch_page
 import yaml
 from crawl4ai.utils import get_content_of_website_optimized
-from .llm_client import LlamaModel
+from .llm_client import LlamaModel, GemmaModel
 from .prompts.catalog_urls import CatalogRootPrompt, CatalogSchemaPrompt
 
 from .config import SourceConfig
@@ -77,7 +77,7 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
     return None
 
 
-async def llm_select_root(school: str, candidates: List[str]) -> Optional[str]:
+async def llm_select_root(school: str, candidates: List[str]) -> Optional[tuple[str, int]]:
     pages = []
     for url in candidates[:3]:
         snippet = await get_markdown_snippet(url)
@@ -86,8 +86,18 @@ async def llm_select_root(school: str, candidates: List[str]) -> Optional[str]:
     if not pages:
         return None
     prompt = CatalogRootPrompt(school, pages)
-    llm = LlamaModel()
-    llm.set_response_format({"type": "json_object"})
+    llm = GemmaModel()
+    llm.set_response_format({
+        "type": "json_object",
+        "json_schema": {
+            "name": "CourseExtractionSchema",
+            "description": "CourseExtractionSchema",
+            "root_url": {
+                "type": "string"
+            },
+            "strict": True
+        }
+    })
     try:
         resp = llm.chat(
             [
@@ -96,14 +106,22 @@ async def llm_select_root(school: str, candidates: List[str]) -> Optional[str]:
             ]
         )
         data = json.loads(resp["choices"][0]["message"]["content"])
-        return data.get("root_url")
+        if isinstance(data, list):
+            try:
+                url = data.get("root_url")
+            except Exception as ex:
+                raise RuntimeError(f"Failed to load URL from LLM response, instead received: {data}") from ex
+
+        usage = resp.get("usage", {})
+
+        return url, usage
     except Exception:
         return None
 
 
 async def llm_select_schema(
     school: str, root_url: str, candidates: List[str]
-) -> Optional[str]:
+) -> Optional[tuple[str, int]]:
     pages = []
     for url in candidates[:3]:
         snippet = await get_markdown_snippet(url)
@@ -111,9 +129,20 @@ async def llm_select_schema(
             pages.append({"url": url, "snippet": snippet})
     if not pages:
         return None
+    print(f"Attempting to generate using:\n\n{pages}")
     prompt = CatalogSchemaPrompt(school, root_url, pages)
-    llm = LlamaModel()
-    llm.set_response_format({"type": "json_object"})
+    llm = GemmaModel()
+    llm.set_response_format({
+        "type": "json_object",
+        "json_schema": {
+            "name": "CourseExtractionSchema",
+            "description": "CourseExtractionSchema",
+            "schema_url": {
+                "type": "string"
+            },
+            "strict": True
+        }
+    })
     try:
         resp = llm.chat(
             [
@@ -122,7 +151,14 @@ async def llm_select_schema(
             ]
         )
         data = json.loads(resp["choices"][0]["message"]["content"])
-        return data.get("schema_url")
+        if isinstance(data, list):
+            try:
+                url = data.get("schema_url")
+            except Exception as ex:
+                raise RuntimeError(f"Failed to load URL from LLM response, instead received: {data}") from ex
+        usage = resp.get("usage", {})
+
+        return url, usage
     except Exception:
         return None
 
@@ -149,7 +185,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
     combined = candidates + results
     ordered_by_priority = list(OrderedDict.fromkeys(combined))
 
-    root_url = await llm_select_root(school, ordered_by_priority)
+    root_url, usage = await llm_select_root(school, ordered_by_priority)
     if not root_url:
         for url in ordered_by_priority:
             result = await analyze_candidate(url)
@@ -167,9 +203,8 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
     links = []
     for a in soup.find_all("a", href=True):
         href = urljoin(root_url, a["href"])
-        if any(k in href.lower() for k in ["course", "coursedog", "preview_course"]):
-            links.append(href)
-    schema_url = await llm_select_schema(school, root_url, links)
+        links.append(href)
+    schema_url, usage = await llm_select_schema(school, root_url, links)
     if schema_url:
         return root_url, schema_url
 
