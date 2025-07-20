@@ -66,7 +66,7 @@ async def fetch_html(url: str, crawler: AsyncWebCrawler) -> Optional[str]:
 
 async def get_markdown_snippet(
     url: str,
-    limit: int = 2000,
+    limit: int = 60000,
     crawler: Optional[AsyncWebCrawler] = None,
 ) -> Optional[str]:
     """Return a cleaned markdown snippet for ``url`` using Crawl4AI."""
@@ -104,6 +104,7 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
 
 async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str, int]]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
+    print("REACHED llm_select_root")
     if not pages:
         return None
     prompt = CatalogRootPrompt(school, pages)
@@ -120,12 +121,15 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         }
     })
     try:
-        resp = llm.chat(
+        resp = await llm.chat(
             [
                 {"role": "system", "content": prompt.system()},
                 {"role": "user", "content": prompt.user()},
             ]
         )
+        sys_p = prompt.system()
+        user_p = prompt.user()
+        print(f'▶ SYSTEM PROMPT:\n{sys_p}\n\n▶ USER PROMPT:\n{user_p}\n')
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -166,14 +170,16 @@ async def llm_select_schema(
             "strict": True
         }
     })
-    # print(f"Attempting to generate using:\n\n{prompt.user()}")
     try:
-        resp = llm.chat(
+        resp = await llm.chat(
             [
                 {"role": "system", "content": prompt.system()},
                 {"role": "user", "content": prompt.user()},
             ]
         )
+        sys_p = prompt.system()
+        user_p = prompt.user()
+        print(f'▶ SYSTEM PROMPT:\n{sys_p}\n\n▶ USER PROMPT:\n{user_p}\n')
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -210,7 +216,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
 
     browser_cfg = BrowserConfig(headless=True, verbose=False)
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        urls_to_snip = ordered_by_priority[:4]
+        urls_to_snip = ordered_by_priority
         results_snip = await crawler.arun_many(
             urls=urls_to_snip,
             config=CrawlerRunConfig(
