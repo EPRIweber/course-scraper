@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 
 from src.crawler import crawl_and_collect_urls
 
-from .render_utils import fetch_page
+from .render_utils import close_playwright, fetch_page
 import yaml
 from crawl4ai.utils import get_content_of_website_optimized
 from .llm_client import LlamaModel, GemmaModel
@@ -73,9 +73,9 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
     soup = BeautifulSoup(html, "html.parser")
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        lower = href.lower()
-        if any(k in lower for k in ["preview_course", "courses", "coursedog"]):
-            return urljoin(base_url, href)
+        # lower = href.lower()
+        # if any(k in lower for k in ["preview_course", "courses", "coursedog"]):
+        return urljoin(base_url, href)
     return None
 
 
@@ -144,7 +144,7 @@ async def llm_select_schema(
             "strict": True
         }
     })
-    print(f"Attempting to generate using:\n\n{prompt.user()}")
+    # print(f"Attempting to generate using:\n\n{prompt.user()}")
     try:
         resp = llm.chat(
             [
@@ -264,17 +264,18 @@ async def async_main() -> None:
         csv_reader = csv.reader(file)
         for row in csv_reader:
             names.append(row[0])
-
-    sources = await generate_for_schools(names)
-    if not sources:
-        print("No sources generated")
-        return
-    update_sources_file(sources)
+    try:
+        sources = await generate_for_schools(names)
+        if not sources:
+            print("No sources generated")
+            return
+        update_sources_file(sources)
+    finally:
+        await close_playwright()
 
 
 def main() -> None:
     asyncio.run(async_main())
-
 
 if __name__ == "__main__":
     main()
