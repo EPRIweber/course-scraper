@@ -5,6 +5,7 @@ from collections import OrderedDict
 import csv
 import json
 import os
+import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import urljoin
@@ -24,6 +25,8 @@ from .llm_client import LlamaModel, GemmaModel
 from .prompts.catalog_urls import CatalogRootPrompt, CatalogSchemaPrompt
 
 from .config import SourceConfig
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -60,7 +63,8 @@ async def fetch_html(url: str, crawler: AsyncWebCrawler) -> Optional[str]:
     try:
         result = await crawler.arun(url=url, config=CrawlerRunConfig(cache_mode=CacheMode.ENABLED))
         return result.html if result.success else None
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to fetch HTML for %s", url)
         return None
 
 
@@ -88,7 +92,8 @@ async def get_markdown_snippet(
             return None
         snippet = result.markdown.fit_markdown or ""
         return snippet[:limit]
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to get markdown snippet for %s", url)
         return None
 
 
@@ -104,7 +109,7 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
 
 async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str, int]]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
-    print("REACHED llm_select_root")
+    logger.debug("REACHED llm_select_root")
     if not pages:
         return None
     prompt = CatalogRootPrompt(school, pages)
@@ -129,7 +134,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         )
         sys_p = prompt.system()
         user_p = prompt.user()
-        print(f'▶ SYSTEM PROMPT:\n{sys_p}\n\n▶ USER PROMPT:\n{user_p}\n')
+        logger.debug("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -140,7 +145,8 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         usage = resp.get("usage", {})
 
         return url, usage
-    except Exception:
+    except Exception as e:
+        logger.exception("LLM root selection failed for %s", school)
         return None
 
 
@@ -179,7 +185,7 @@ async def llm_select_schema(
         )
         sys_p = prompt.system()
         user_p = prompt.user()
-        print(f'▶ SYSTEM PROMPT:\n{sys_p}\n\n▶ USER PROMPT:\n{user_p}\n')
+        logger.debug("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -189,7 +195,8 @@ async def llm_select_schema(
         usage = resp.get("usage", {})
 
         return url, usage
-    except Exception:
+    except Exception as e:
+        logger.exception("LLM schema selection failed for %s", school)
         return None
 
 
@@ -208,7 +215,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
     try:
         results = await google_search(query)
     except Exception as e:
-        print(f"Search failed for {school}: {e}")
+        logger.error("Search failed for %s: %s", school, e)
         return None
     candidates = filter_catalog_urls(results)
     combined = candidates + results
@@ -318,7 +325,7 @@ async def async_main() -> None:
     try:
         sources = await generate_for_schools(names)
         if not sources:
-            print("No sources generated")
+            logger.warning("No sources generated")
             return
         update_sources_file(sources)
     finally:
