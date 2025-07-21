@@ -16,12 +16,8 @@ from crawl4ai.utils import get_content_of_website_optimized
 
 from src.crawler import crawl_and_collect_urls
 
-from .render_utils import close_playwright
+from .render_utils import close_playwright, fetch_page
 import yaml
-from crawl4ai import AsyncWebCrawler
-from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
-from crawl4ai.content_filter_strategy import PruningContentFilter
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from .llm_client import LlamaModel, GemmaModel
 from .prompts.catalog_urls import CatalogRootPrompt, CatalogSchemaPrompt
 
@@ -59,12 +55,11 @@ def filter_catalog_urls(urls: List[str]) -> List[str]:
     return filtered
 
 
-async def fetch_html(url: str, crawler: AsyncWebCrawler) -> Optional[str]:
-    """Fetch ``url`` using ``crawler`` and return the raw HTML."""
+async def fetch_html(url: str) -> Optional[str]:
+    """Fetch ``url`` and return the raw HTML using the shared fetch logic."""
     try:
-        result = await crawler.arun(url=url, config=CrawlerRunConfig(cache_mode=CacheMode.ENABLED))
-        return result.html if result.success else None
-    except Exception as e:
+        return await fetch_page(url)
+    except Exception:
         logger.exception("Failed to fetch HTML for %s", url)
         return None
 
@@ -72,31 +67,18 @@ async def fetch_html(url: str, crawler: AsyncWebCrawler) -> Optional[str]:
 async def get_markdown_snippet(
     url: str,
     limit: int = 60000,
-    crawler: Optional[AsyncWebCrawler] = None,
+    html: Optional[str] = None,
 ) -> Optional[str]:
-    """Return a cleaned markdown snippet for ``url`` using Crawl4AI."""
-    if crawler is None:
-        async with AsyncWebCrawler(config=BrowserConfig(headless=True, verbose=False)) as _crawler:
-            return await get_markdown_snippet(url, limit, _crawler)
+    """Return a cleaned markdown snippet for ``url``."""
     try:
-        result = await crawler.arun(
-            url=url,
-            config=CrawlerRunConfig(
-                cache_mode=CacheMode.ENABLED,
-                markdown_generator=DefaultMarkdownGenerator(
-                    content_filter=PruningContentFilter(threshold=0.5),
-                    options={"ignore_links": True},
-                )
-            ),
-        )
-        if not result.success:
-            logger.warning("Failed to fetch or parse %s", url)
-            return None
-        snippet = result.markdown.fit_markdown or ""
+        if html is None:
+            html = await fetch_page(url)
+        data = get_content_of_website_optimized(url, html)
+        snippet = data.get("markdown", "")
         return snippet[:limit]
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to get markdown snippet for %s", url)
-        return e
+        return None
 
 
 def find_course_link(html: str, base_url: str) -> Optional[str]:
@@ -113,7 +95,7 @@ def find_course_link(html: str, base_url: str) -> Optional[str]:
 async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str, int]]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
     print("⟳ pages passed into llm_select_root:", pages)
-    logger.log("REACHED llm_select_root")
+    logger.debug("REACHED llm_select_root")
     if not pages:
         logger.warning("No pages provided to llm_select_root")
         return None
@@ -139,7 +121,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
                 {"role": "user", "content": user_p},
             ]
         )
-        logger.log("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
+        logger.debug("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
@@ -173,7 +155,7 @@ async def llm_select_schema(
     prompt = CatalogSchemaPrompt(school, root_url, pages)
     sys_p = prompt.system()
     user_p = prompt.user()
-    logger.log("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
+    logger.debug("\u25B6 SYSTEM PROMPT:\n%s\n\n\u25B6 USER PROMPT:\n%s\n", sys_p, user_p)
     llm = GemmaModel()
     llm.set_response_format({
         "type": "json_object",
@@ -207,8 +189,8 @@ async def llm_select_schema(
         return None
 
 
-async def analyze_candidate(url: str, crawler: AsyncWebCrawler) -> Optional[Tuple[str, str]]:
-    html = await fetch_html(url, crawler)
+async def analyze_candidate(url: str) -> Optional[Tuple[str, str]]:
+    html = await fetch_html(url)
     if html is None:
         logger.warning("Failed to fetch HTML for candidate %s", url)
         return None
@@ -230,62 +212,56 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
     combined = candidates + results
     ordered_by_priority = list(OrderedDict.fromkeys(combined))
 
-    browser_cfg = BrowserConfig(headless=True, verbose=False)
-    async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        urls_to_snip = ordered_by_priority
-        results_snip = await crawler.arun_many(
-            urls=urls_to_snip,
-            config=CrawlerRunConfig(
-                cache_mode=CacheMode.ENABLED,
-                markdown_generator=DefaultMarkdownGenerator(
-                    content_filter=PruningContentFilter(threshold=0.5),
-                    options={"ignore_links": True},
-                ),
-            ),
-        )
-        for res in results_snip:
-            print(res.url,
-                "success=", res.success,
-                "markdown_len=", len((res.markdown.fit_markdown or "")))
+    sem = asyncio.Semaphore(5)
+    pages: list[dict] = []
 
-        pages = [
-            {"url": res.url, "snippet": res.markdown.fit_markdown}
-            for res in results_snip
-            if res.success and res.markdown.fit_markdown
-        ]
+    async def process(url: str) -> None:
+        async with sem:
+            try:
+                html = await fetch_page(url)
+                snippet = await get_markdown_snippet(url, html=html)
+                if snippet:
+                    pages.append({"url": url, "snippet": snippet})
+            except Exception:
+                logger.exception("Failed processing %s", url)
 
-        root_choice = await llm_select_root(school, pages)
-        if root_choice:
-            root_url, usage = root_choice
-        else:
-            root_url = None
+    await asyncio.gather(*(process(u) for u in ordered_by_priority))
 
-        if not root_url:
-            for url in ordered_by_priority:
-                result = await analyze_candidate(url, crawler)
-                if result:
-                    root_url, schema_url = result
-                    return root_url, schema_url
-            logger.warning("No valid candidates found for %s", school)
-            return None
+    for p in pages:
+        print(p["url"], "snippet_len=", len(p["snippet"]))
 
-        temp_source = SourceConfig(
-           source_id=f"TEMP_{school}",
-           name=school,
-           root_url=root_url,
-           schema_url=root_url
-        )
-        links = await crawl_and_collect_urls(temp_source)
-        schema_res = await llm_select_schema(school, root_url, links, crawler=crawler)
-        if schema_res:
-            schema_url, usage = schema_res
-            return root_url, schema_url
+    root_choice = await llm_select_root(school, pages)
+    if root_choice:
+        root_url, usage = root_choice
+    else:
+        root_url = None
 
+    if not root_url:
         for url in ordered_by_priority:
-            result = await analyze_candidate(url, crawler)
+            result = await analyze_candidate(url)
             if result:
-                return result
-        logger.warning("No schema URL found for %s", school)
+                root_url, schema_url = result
+                return root_url, schema_url
+        logger.warning("No valid candidates found for %s", school)
+        return None
+
+    temp_source = SourceConfig(
+       source_id=f"TEMP_{school}",
+       name=school,
+       root_url=root_url,
+       schema_url=root_url
+    )
+    links = await crawl_and_collect_urls(temp_source)
+    schema_res = await llm_select_schema(school, root_url, links)
+    if schema_res:
+        schema_url, usage = schema_res
+        return root_url, schema_url
+
+    for url in ordered_by_priority:
+        result = await analyze_candidate(url)
+        if result:
+            return result
+    logger.warning("No schema URL found for %s", school)
     return None
 
 
