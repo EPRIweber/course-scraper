@@ -1,0 +1,5 @@
+httpx
+bs4
+PyYAML
+crawl4ai
+pydantic

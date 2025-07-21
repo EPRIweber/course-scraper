@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""SANITY CHECK
+
+Utility script to merge new scraped courses with an existing dataset."""
+
 import json
 import argparse
 from typing import List, Dict, Tuple

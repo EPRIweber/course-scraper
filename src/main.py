@@ -1,4 +1,11 @@
 # src/main.py
+"""Application entry point.
+
+This module orchestrates the entire scraping pipeline. It retrieves enabled
+sources from the database, runs the crawl and scrape stages and finally stores
+results.  Modify this file if you need to change the overall workflow.
+"""
+
 import asyncio
 import json
 import logging, logging.config
@@ -6,7 +13,8 @@ import os
 from typing import Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
-from src.crawler import close_playwright, crawl_and_collect_urls
+from src.crawler import crawl_and_collect_urls
+from src.render_utils import close_playwright
 from src.models import SourceRunResult
 from src.prefilter import prefilter_urls
 from src.prompts.taxonomy import load_full_taxonomy
@@ -372,7 +380,7 @@ async def main():
 
 async def testing():
     test_source = config.sources[0]
-    print("generating test schema...")
+    print(f"generating test schema for {test_source.name}")
     schema, usage = await generate_schema(test_source)
     print(schema)
     check: ValidationCheck = await validate_schema(
@@ -382,5 +390,5 @@ async def testing():
     
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    # asyncio.run(testing())
+    # asyncio.run(main())
+    asyncio.run(testing())

@@ -1,4 +1,10 @@
 # src/storage.py
+"""Storage backends for scraped data.
+
+Currently a SQL Server implementation is provided which exposes async methods
+to save and fetch crawl results, schemas and classification data.
+"""
+
 import asyncio
 import json
 import pyodbc

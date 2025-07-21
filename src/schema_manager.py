@@ -1,4 +1,10 @@
 # src/schema_manager.py
+"""Schema generation and validation utilities.
+
+This module uses LLM assistance to derive a scraping schema from a catalog page
+and provides helpers to validate that schema by performing a test scrape.
+"""
+
 from playwright.async_api import Error as PlaywrightError
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from crawl4ai import AsyncWebCrawler
@@ -18,51 +24,10 @@ import urllib3
 from src.llm_client import LlamaModel, GemmaModel
 from src.prompts.schema import FindRepeating
 from src.scraper import scrape_urls
+from src.render_utils import fetch_page
 
 REQUIRED_FIELDS = ["course_title", "course_description"]
 OPTIONAL_FIELDS = ["course_code", "course_credits"]
-
-_strategy = AsyncPlaywrightCrawlerStrategy(headless=True)
-_crawler = AsyncWebCrawler(crawler_strategy=_strategy)
-
-async def _load_page(url: str, timeout: float) -> str:
-     # 1) Try a plain HTTPX GET
-    try:
-       async with httpx.AsyncClient(verify=False, timeout=timeout) as client:
-           resp = await client.get(
-               url,
-               headers={
-                   "User-Agent": "Mozilla/5.0",
-                   "Accept": "text/html,application/xhtml+xml",
-               },
-           )
-           # explicitly reject 403
-           if resp.status_code == 403:
-               raise RuntimeError(f"HTTP 403 Forbidden for {url}")
-           resp.raise_for_status()
-           return resp.text
-    except Exception:
-       pass  # now we truly fall back only on connectivity/timeouts, NOT on 403
-
-    try:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            page    = await browser.new_page()
-            await page.set_extra_http_headers({"User-Agent": "Mozilla/5.0"})
-            # domcontentloaded will fire faster than full load
-            response = await page.goto(
-                url, timeout=timeout, wait_until="domcontentloaded"
-            )
-           # if the server still sends a 403 to your headless browser, stop
-            if response and response.status == 403:
-                raise RuntimeError(f"Playwright got 403 for {url}")
-            html = await page.content()
-            await browser.close()
-            return html
-    except PlaywrightError as e:
-        raise RuntimeError(f"Playwright failed to fetch {url!r}: {e}")
-
-
 
 async def generate_schema(
     source: SourceConfig,
@@ -136,7 +101,7 @@ async def _generate_schema_from_llm(
 
     # unified fetch + fallback
     try:
-        catalog_html = await _load_page(str(url), timeout=60000*10)
+        catalog_html = await fetch_page(str(url), timeout=60000*10)
     except Exception as e:
         raise RuntimeError(f"Failed to load schema_url {url}: {e}")
 

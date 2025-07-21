@@ -1,4 +1,6 @@
 # src/crawler_prefilter.py
+"""Utility functions for checking URL availability before scraping."""
+
 import asyncio
 import httpx
 from typing import List

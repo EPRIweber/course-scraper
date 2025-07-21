@@ -1,4 +1,6 @@
 # src/config.py
+"""Pydantic models and utilities for loading source configuration."""
+
 from dataclasses import dataclass
 from pydantic import BaseModel, HttpUrl, Extra
 from typing import List, Optional
@@ -16,9 +18,9 @@ class SourceConfig(BaseModel):
     root_url: HttpUrl
     schema_url: HttpUrl
     include_external: Optional[bool] = False
-    crawl_depth: Optional[int] = 5
-    page_timeout_s: Optional[int] = 20
-    max_concurrency: Optional[int] = 10
+    crawl_depth: Optional[int] = 3
+    page_timeout_s: Optional[int] = 60
+    max_concurrency: Optional[int] = 1
     url_base_exclude: Optional[str] = None
     url_exclude_patterns: Optional[list[str]] = None
 
