@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import urljoin
 
+from crawl4ai import AsyncWebCrawler
 import httpx
 from bs4 import BeautifulSoup
 from crawl4ai.utils import get_content_of_website_optimized
@@ -115,7 +116,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
     try:
         sys_p = prompt.system()
         user_p = prompt.user()
-        resp = await llm.chat(
+        resp = llm.chat(
             [
                 {"role": "system", "content": sys_p},
                 {"role": "user", "content": user_p},
@@ -125,10 +126,13 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
+                print(data)
                 url = data.get("root_url")
             except Exception as ex:
                 raise RuntimeError(f"Failed to load URL from LLM response, instead received: {data}") from ex
-
+        else:
+            logger.warning("LLM returned non-list data: %s", data)
+            return None
         usage = resp.get("usage", {})
 
         return url, usage
@@ -178,9 +182,13 @@ async def llm_select_schema(
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, list):
             try:
+                print(data)
                 url = data.get("schema_url")
             except Exception as ex:
                 raise RuntimeError(f"Failed to load URL from LLM response, instead received: {data}") from ex
+        else:
+            logger.warning("LLM returned non-list data: %s", data)
+            return None
         usage = resp.get("usage", {})
 
         return url, usage
@@ -237,6 +245,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
         root_url = None
 
     if not root_url:
+        logger.info("LLM did not select a root URL, falling back to candidates")
         for url in ordered_by_priority:
             result = await analyze_candidate(url)
             if result:
@@ -252,10 +261,12 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
        schema_url=root_url
     )
     links = await crawl_and_collect_urls(temp_source)
-    schema_res = await llm_select_schema(school, root_url, links)
+    schema_res, usage = await llm_select_schema(school, root_url, links)
     if schema_res:
         schema_url, usage = schema_res
         return root_url, schema_url
+    else:
+        logger.info("LLM did not select a schema URL, falling back to candidates")
 
     for url in ordered_by_priority:
         result = await analyze_candidate(url)

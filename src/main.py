@@ -380,7 +380,7 @@ async def main():
 
 async def testing():
     test_source = config.sources[0]
-    print("generating test schema...")
+    print(f"generating test schema for {test_source.name}")
     schema, usage = await generate_schema(test_source)
     print(schema)
     check: ValidationCheck = await validate_schema(
@@ -390,5 +390,5 @@ async def testing():
     
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    # asyncio.run(testing())
+    # asyncio.run(main())
+    asyncio.run(testing())

@@ -301,18 +301,18 @@ sources:
 # BEGIN MAP SCHOOLS
 
 
-- name: oregon_state_university
-  root_url: https://catalog.oregonstate.edu/courses/
-  schema_url: https://catalog.oregonstate.edu/courses/ats/
-  max_concurrency: 1
-  crawl_depth: 3
-
-# - name: cal_state_la
-#   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
-#   schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
-#   url_base_exclude: https://ecatalog.calstatela.edu
+# - name: oregon_state_university
+#   root_url: https://catalog.oregonstate.edu/courses/
+#   schema_url: https://catalog.oregonstate.edu/courses/ats/
 #   max_concurrency: 1
-#   crawl_depth: 50
+#   crawl_depth: 3
+
+- name: cal_state_la
+  root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
+  schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
+  url_base_exclude: https://ecatalog.calstatela.edu
+  max_concurrency: 1
+  crawl_depth: 50
 
 # - name: texas_tech
 #   root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
