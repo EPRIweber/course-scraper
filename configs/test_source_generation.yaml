@@ -1,5 +1,5 @@
 sources:
 - source_id: LOCAL_Oregon State University
   name: Oregon State University
-  root_url: https://catalog.oregonstate.edu/
-  schema_url: https://catalog.oregonstate.edu/courses/cs161
+  root_url: https://catalog.oregonstate.edu/courses/
+  schema_url: https://catalog.oregonstate.edu/courses/art/321/

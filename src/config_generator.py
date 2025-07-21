@@ -209,6 +209,8 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
        root_url=root_url,
        schema_url=root_url
     )
+    links = await crawl_and_collect_urls(temp_source)
+    print(links)
     # Implement crawl.arun_many using get_content_of_website_optimized in markdown strategy here.
     # If not possible to use get_content_of_website_optimized with arun_amany, then use the next best markdown generator strategy.
 
@@ -237,7 +239,11 @@ async def generate_for_schools(names: List[str]) -> List[SourceConfig]:
     sources: List[SourceConfig] = []
     for name in names:
         print(f"Discovering catalog for {name}...")
-        res = await discover_catalog_urls(name)
+        try:
+            res = await discover_catalog_urls(name)
+        except Exception as e:
+            logger.warning("Failed to discover catalog URLs for %s", name)
+            raise logger.exception(e)
         if not res:
             print(f"  no catalog found")
             continue
@@ -282,8 +288,8 @@ async def async_main() -> None:
 
 # FOR TESTING PURPOSES
 
-# def main() -> None:
-#     asyncio.run(async_main())
+def main() -> None:
+    asyncio.run(async_main())
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()

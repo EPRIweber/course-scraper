@@ -75,7 +75,7 @@ async def _static_bfs_crawl(
     timeout: int
 ) -> Set[str]:
     start = urlparse(base_exclude or root_url)
-    # print(">>> parsing:", base_exclude or root_url)
+    print(">>> parsing:", base_exclude or root_url)
     domain = start.netloc
     root_path = (start.path.rstrip("/") + "/") if start.path else "/"
     # print(f'ROOT PATH: {root_path}')
@@ -168,6 +168,7 @@ async def _static_bfs_crawl(
         else:
             while queue:
                 url, depth = queue.popleft()
+                print(f"Processing URL: {url} at depth {depth}")
                 if url in seen or depth >= max_crawl_depth:
                     continue
                 seen.add(url)
