@@ -32,14 +32,14 @@ async def fetch_dynamic(url: str) -> str:
     """Render ``url`` using Playwright via Crawl4AI."""
     logger.debug("Dynamic fetch for URL: %s", url)
     crawler, _ = _get_playwright_crawler()
-    result = await crawler.arun([{"url": url}])
+    result = await crawler.arun(url=url)
     html = result.html or ""
     if not html:
         raise RuntimeError("Empty HTML from dynamic fetch")
     return html
 
 
-async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
+async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore, *, delay: float = 1.0) -> str:
     """Return HTML using ``client`` with retry/backoff on certain errors."""
     backoff = 1.0
     max_retries = 5
@@ -53,7 +53,9 @@ async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semapho
                 },
             )
         if resp.status_code < 400:
-            return resp.text
+            html = resp.text
+            await asyncio.sleep(delay + random.random())
+            return html
         if resp.status_code not in (403, 429, 503):
             resp.raise_for_status()
 
@@ -77,13 +79,15 @@ async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semapho
             },
         )
     resp.raise_for_status()
-    return resp.text
+    html = resp.text
+    await asyncio.sleep(delay + random.random())
+    return html
 
 
-async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> str:
+async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore, *, delay: float = 1.0) -> str:
     """Fetch page HTML with HTTPX, falling back to Playwright on errors."""
     try:
-        return await fetch_static(url, client, sem)
+        return await fetch_static(url, client, sem, delay=delay)
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         code = getattr(e, "response", None) and e.response.status_code
         if isinstance(e, httpx.RequestError) or code in {403, 404, 429}:
@@ -97,8 +101,8 @@ async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.
         raise
 
 
-async def fetch_page(url: str, *, timeout: int = 60000 * 10) -> str:
+async def fetch_page(url: str, *, timeout: int = 60000 * 10, delay: float = 1.0) -> str:
     """Fetch ``url`` with fallback, creating a temporary HTTPX client."""
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         sem = asyncio.Semaphore(1)
-        return await fetch_with_fallback(url, client, sem)
+        return await fetch_with_fallback(url, client, sem, delay=delay)
