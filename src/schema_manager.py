@@ -192,10 +192,12 @@ async def _generate_schema_from_llm(
         else:
             raise ValueError("LLM returned an array; expected a single schema object")
 
-    usage = response.get("usage", {})
+    
+    prompt_t = response.get("usage", {}).get("prompt_tokens")
+    completion_t = response.get("usage", {}).get("completion_tokens")
 
     try:
-        return obj, usage
+        return obj, prompt_t + completion_t
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse schema JSON:\n{content}") from e
 
