@@ -91,26 +91,6 @@ async def _save_data_fallback(source_id: str, records: List[Dict]) -> None:
 # orchestration
 # ---------------------------------------------------------------------------
 
-async def _get_storage() -> StorageBackend | None:
-    """Create the default storage backend."""
-    try:
-        conn_str = (
-            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-            f"SERVER={os.getenv('DB_SERVER')};"
-            f"DATABASE={os.getenv('DB_NAME')};"
-            f"UID={os.getenv('DB_USER')};"
-            f"PWD={os.getenv('DB_PASS')};"
-            "TrustServerCertificate=yes;"
-            "Encrypt=yes;"
-            "MARS_Connection=Yes;"
-        )
-        logger.info("Using SQL-Server storage backend")
-        return SqlServerStorage(conn_str)
-    except Exception as exc:
-        logger.exception("Storage backend creation failed: %s", exc)
-        return None
-
-
 async def run_scrape_pipeline(
     school: str,
     run_id: int,

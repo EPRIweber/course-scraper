@@ -27,6 +27,16 @@ GOOGLE_CX = os.getenv("GOOGLE_CX")
 
 KEYWORDS = ["catalog", "bulletin", "courses", "curriculum"]
 
+async def discover_source_config(name: str) -> SourceConfig:
+    """Discover a ``SourceConfig`` for ``name``."""
+    root, schema = await discover_catalog_urls(name)
+    return SourceConfig(
+        source_id=f"LOCAL_{name}",
+        name=name,
+        root_url=root,
+        schema_url=schema,
+    )
+
 def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     """Return a crawler run configuration for Markdown extraction."""
     return CrawlerRunConfig(
@@ -37,7 +47,6 @@ def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
         ),
         page_timeout=timeout_s * 1000,
     )
-
 
 async def fetch_snippets(
     crawler: AsyncWebCrawler, urls: List[str], run_cfg: CrawlerRunConfig, *, max_concurrency: int = 5
@@ -206,16 +215,6 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
             return None
         schema_url, _ = schema_res
         return root_url, schema_url
-
-async def discover_source_config(name: str) -> SourceConfig:
-    """Discover a ``SourceConfig`` for ``name``."""
-    root, schema = await discover_catalog_urls(name)
-    return SourceConfig(
-        source_id=f"LOCAL_{name}",
-        name=name,
-        root_url=root,
-        schema_url=schema,
-    )
 
 # async def generate_config(name: str, ipeds_url: Optional[str] = None) -> List[SourceConfig]:
 #     source: SourceConfig = None

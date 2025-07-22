@@ -7,6 +7,7 @@ results.  Modify this file if you need to change the overall workflow.
 """
 
 import asyncio
+import csv
 import json
 import logging, logging.config
 import os
@@ -53,15 +54,6 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
-
-async def process_generate_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
-    """
-    Starting with just the name of a school, generate a source config with root_url and schema_url filled in.
-
-    Steps:
-     - 
-    """
-    return None
 
 async def get_storage_backend() -> Optional[StorageBackend]:
     try:
@@ -360,11 +352,16 @@ async def main():
     logger.info("Run ID: %d", run_id)
 
     try:
+        new_schools = []
+        with open('configs/new_schools.csv', 'r') as f:
+            csv_reader = csv.reader(f)
+            for r in csv_reader:
+                new_schools.append(r)
         # 1.  Pull sources from DB and local YAML file
-        sources = await storage.list_sources()
-        if not sources:
-            logger.warning("No sources found; skipping all processing tasks.")
-            return
+        # sources = await storage.list_sources()
+        # if not sources:
+        #     logger.warning("No sources found; skipping all processing tasks.")
+        #     return
 
         # 2.  Run the unified pipeline for each source
         for src in sources:
@@ -375,13 +372,18 @@ async def main():
                 f"Pipeline start for {src.name}",
             )
             try:
-                await run_scrape_pipeline(src.name, run_id, storage)
-                await storage.log(
-                    run_id,
-                    src.source_id,
-                    int(Stage.STORAGE),
-                    f"Pipeline complete for {src.name}",
-                )
+                # 2.  Kick off scraping tasks
+                tasks = [run_scrape_pipeline(run_id, name)]
+                # tasks = [process_schema(run_id, src, storage) for src in sources]
+                # await asyncio.gather(*tasks)
+                # tasks = [process_test_schema(run_id, src, storage) for src in sources]
+                # await asyncio.gather(*tasks)
+                # tasks = [process_crawl(run_id, src, storage) for src in sources]
+                # await asyncio.gather(*tasks, return_exceptions=True)
+                # tasks = [process_scrape(run_id, src, storage) for src in sources]
+                # await asyncio.gather(*tasks, return_exceptions=True)
+                # tasks = [process_classify(run_id, src, storage) for src in sources]
+                # await asyncio.gather(*tasks)
             except Exception as exc:
                 logger.exception("Pipeline failed for %s: %s", src.name, exc)
 
