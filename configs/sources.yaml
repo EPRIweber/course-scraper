@@ -301,11 +301,11 @@ sources:
 # BEGIN MAP SCHOOLS
 
 
-- name: oregon_state_university
-  root_url: https://catalog.oregonstate.edu/courses/
-  schema_url: https://catalog.oregonstate.edu/courses/ats/
-  max_concurrency: 1
-  crawl_depth: 3
+# - name: oregon_state_university
+#   root_url: https://catalog.oregonstate.edu/courses/
+#   schema_url: https://catalog.oregonstate.edu/courses/ats/
+#   max_concurrency: 1
+#   crawl_depth: 3
 
 - name: cal_state_la
   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
