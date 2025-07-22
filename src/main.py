@@ -53,6 +53,15 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+async def process_generate_source(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
+    """
+    Starting with just the name of a school, generate a source config with root_url and schema_url filled in.
+
+    Steps:
+     - 
+    """
+    return None
+
 async def get_storage_backend() -> Optional[StorageBackend]:
     try:
         conn_str = (
@@ -381,7 +390,7 @@ async def main():
 async def testing():
     test_source = config.sources[0]
     print(f"generating test schema for {test_source.name}")
-    schema, usage = await generate_schema(test_source)
+    schema = None
     print(schema)
     check: ValidationCheck = await validate_schema(
         schema=schema,

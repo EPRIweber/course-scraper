@@ -198,6 +198,8 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
     #     print(p["url"], "snippet_len=", len(p["snippet"]))
 
     root_url, usage = await llm_select_root(school, pages)
+    print(f"Usage: {usage}")
+
 
     if not root_url:
         logger.warning("LLM did not select a root URL, returning None")
@@ -220,6 +222,7 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
         root_url=root_url,
         pages=[]
     )
+    print(f"Usage: {usage}")
     if schema_url:
         return root_url, schema_url
     else:
