@@ -1,25 +1,20 @@
 # src/config_generator.py
-import argparse
-import asyncio
 from collections import OrderedDict
-import csv
 import json
 import os
 import logging
-from pathlib import Path
 from typing import List, Optional, Tuple
-from urllib.parse import urljoin
+from crawl4ai import AsyncWebCrawler
+from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+from crawl4ai.content_filter_strategy import PruningContentFilter
 
 from crawl4ai import AsyncWebCrawler
 import httpx
-from bs4 import BeautifulSoup
-from crawl4ai.utils import get_content_of_website_optimized
 
 from src.crawler import crawl_and_collect_urls
 
-from .render_utils import close_playwright, fetch_page
-import yaml
-from .llm_client import LlamaModel, GemmaModel
+from .llm_client import GemmaModel
 from .prompts.catalog_urls import CatalogRootPrompt, CatalogSchemaPrompt
 
 from .config import SourceConfig
@@ -31,6 +26,30 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CX = os.getenv("GOOGLE_CX")
 
 KEYWORDS = ["catalog", "bulletin", "courses", "curriculum"]
+
+def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
+    """Return a crawler run configuration for Markdown extraction."""
+    return CrawlerRunConfig(
+        cache_mode=CacheMode.ENABLED,
+        markdown_generator=DefaultMarkdownGenerator(
+            content_filter=PruningContentFilter(threshold=0.5),
+            options={"ignore_links": True},
+        ),
+        page_timeout=timeout_s * 1000,
+    )
+
+
+async def fetch_snippets(
+    crawler: AsyncWebCrawler, urls: List[str], run_cfg: CrawlerRunConfig, *, max_concurrency: int = 5
+) -> list[dict]:
+    """Fetch pages with the crawler and return Markdown snippets."""
+    results = await crawler.arun_many(urls, config=run_cfg, max_concurrency=max_concurrency)
+    pages = []
+    for r in results:
+        if getattr(r, "success", False):
+            snippet = getattr(getattr(r, "markdown", None), "fit_markdown", None)
+            pages.append({"url": r.url, "snippet": snippet})
+    return pages
 
 async def google_search(query: str, *, count: int = 5) -> List[str]:
     """Return a list of result URLs from Google Programmable Search."""
@@ -52,22 +71,6 @@ def filter_catalog_urls(urls: List[str]) -> List[str]:
         if any(k in lower for k in KEYWORDS) and ".edu" in lower:
             filtered.append(url)
     return filtered
-
-async def get_markdown_snippet(
-    url: str,
-    limit: int = 60000,
-    html: Optional[str] = None,
-) -> Optional[str]:
-    """Return a cleaned markdown snippet for ``url``."""
-    try:
-        if html is None:
-            html = await fetch_page(url)
-        data = get_content_of_website_optimized(url, html)
-        snippet = data.get("markdown", "")
-        return snippet
-    except Exception as e:
-        logger.warning("Failed to get markdown snippet for %s", url)
-        raise logger.exception(e)
 
 async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str, int]]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
@@ -102,22 +105,22 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, dict):
             try:
-                print(data)
+                # print(data)
                 url = data.get("root_url")
             except Exception as ex:
                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
-                raise logger.exception(ex)
+                return None
         else:
             logger.warning("Root LLM returned non-list data: %s", data)
             return None
-        print(resp)
+        # print(resp)
         prompt_t = resp.get("usage", {}).get("prompt_tokens")
         completion_t = resp.get("usage", {}).get("completion_tokens")
 
         return url, prompt_t + completion_t
     except Exception as e:
         logger.warning("LLM root selection failed for %s", school)
-        raise logger.exception(e)
+        return None
 
 async def llm_select_schema(
     school: str,
@@ -154,7 +157,7 @@ async def llm_select_schema(
                 url = data.get("schema_url")
             except Exception as ex:
                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
-                raise logger.exception(ex)
+                return None
         else:
             logger.warning("Schema LLM returned non-list data: %s", data)
             return 
@@ -165,134 +168,108 @@ async def llm_select_schema(
         return url, prompt_t + completion_t
     except Exception as e:
         logger.warning("LLM schema selection failed for %s", school)
-        raise logger.exception(e)
+        return None
 
 async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
+    """Return root and schema URLs discovered for ``school``."""
     query = f"{school} course description catalog bulletin site"
     try:
         results = await google_search(query)
     except Exception as e:
         logger.warning("Search failed for %s", school)
         raise logger.exception(e)
+
     candidates = filter_catalog_urls(results)
     combined = candidates + results
     ordered_by_priority = list(OrderedDict.fromkeys(combined))
 
-    sem = asyncio.Semaphore(5)
-    pages: list[dict] = []
+    browser_cfg = BrowserConfig(headless=True, verbose=False)
+    run_cfg = make_markdown_run_cfg(timeout_s=30)
 
-    async def process(url: str) -> None:
-        async with sem:
-            try:
-                html = await fetch_page(url)
-                snippet = await get_markdown_snippet(url, html=html)
-                if snippet:
-                    pages.append({"url": url, "snippet": snippet})
-            except Exception as e:
-                logger.warning("Failed processing %s", url)
-                raise logger.exception(e)
+    async with AsyncWebCrawler(config=browser_cfg) as crawler:
+        pages = await fetch_snippets(crawler, ordered_by_priority[:5], run_cfg)
+        root_res = await llm_select_root(school, pages)
+        if not root_res:
+            return None
+        root_url, _ = root_res
 
-    await asyncio.gather(*(process(u) for u in ordered_by_priority))
-
-    # for p in pages:
-    #     print(p["url"], "snippet_len=", len(p["snippet"]))
-
-    root_url, usage = await llm_select_root(school, pages)
-    print(f"Usage: {usage}")
-
-
-    if not root_url:
-        logger.warning("LLM did not select a root URL, returning None")
-        return None
-
-    temp_source = SourceConfig(
-       source_id=f"TEMP_{school}",
-       name=school,
-       root_url=root_url,
-       schema_url=root_url
-    )
-    links = await crawl_and_collect_urls(temp_source)
-    print(links)
-    # Implement crawl.arun_many using get_content_of_website_optimized in markdown strategy here.
-    # If not possible to use get_content_of_website_optimized with arun_amany, then use the next best markdown generator strategy.
-
-    # Pass in scraped pages into llm_select_schema from here:
-    schema_url, usage = await llm_select_schema(
-        school=school,
-        root_url=root_url,
-        pages=[]
-    )
-    print(f"Usage: {usage}")
-    if schema_url:
+        temp = SourceConfig(
+            source_id=f"TEMP_{school}",
+            name=school,
+            root_url=root_url,
+            schema_url=root_url,
+        )
+        all_urls = await crawl_and_collect_urls(temp)
+        schema_pages = await fetch_snippets(crawler, all_urls[:5], run_cfg)
+        schema_res = await llm_select_schema(school, root_url, schema_pages)
+        if not schema_res:
+            return None
+        schema_url, _ = schema_res
         return root_url, schema_url
-    else:
-        logger.warning("LLM did not select a schema URL, returning None")
-        return None
 
-
-def create_source(name: str, root_url: str, schema_url: str) -> SourceConfig:
+async def discover_source_config(name: str) -> SourceConfig:
+    """Discover a ``SourceConfig`` for ``name``."""
+    root, schema = await discover_catalog_urls(name)
     return SourceConfig(
         source_id=f"LOCAL_{name}",
         name=name,
-        root_url=root_url,
-        schema_url=schema_url,
+        root_url=root,
+        schema_url=schema,
     )
 
-async def generate_for_schools(names: List[str]) -> List[SourceConfig]:
-    sources: List[SourceConfig] = []
-    for name in names:
-        print(f"Discovering catalog for {name}...")
-        try:
-            res = await discover_catalog_urls(name)
-        except Exception as e:
-            logger.warning("Failed to discover catalog URLs for %s", name)
-            raise logger.exception(e)
-        if not res:
-            print(f"  no catalog found")
-            continue
-        root_url, schema_url = res
-        src = create_source(name, root_url, schema_url)
-        sources.append(src)
-        print(f"  found: {root_url} -> {schema_url}")
-    return sources
+# async def generate_config(name: str, ipeds_url: Optional[str] = None) -> List[SourceConfig]:
+#     source: SourceConfig = None
+#     print(f"Discovering catalog for {name}...")
+#     try:
+#         res = await discover_catalog_urls(name)
+#     except Exception as e:
+#         logger.warning("Failed to discover catalog URLs for %s", name)
+#         return None
+#     if not res:
+#         logger.warning("No catalog found %s", name)
+#         return None
+#     root_url, schema_url = res
+#     src = create_source(name, root_url, schema_url)
+#     print(f"  found: {root_url} -> {schema_url}")
+#     return src
 
-def update_sources_file(new_sources: List[SourceConfig]) -> None:
-    data = {}
-    existing = data.setdefault("sources", [])
-    for src in new_sources:
-        existing.append(
-            src.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
-        )
+# def update_sources_file(new_sources: List[SourceConfig]) -> None:
+#     data = {}
+#     existing = data.setdefault("sources", [])
+#     for src in new_sources:
+#         existing.append(
+#             src.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
+#         )
 
-    data["sources"] = existing
-    print(yaml.safe_dump(data, sort_keys=False))
-    with open("configs/test_source_generation.yaml", "w") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
+#     data["sources"] = existing
+#     print(yaml.safe_dump(data, sort_keys=False))
+#     with open("configs/test_source_generation.yaml", "w") as f:
+#         yaml.safe_dump(data, f, sort_keys=False)
 
-def load_names_from_csv(csv_path: Path) -> List[str]:
-    with open(csv_path) as f:
-        return [row[0] for row in csv.reader(f) if row]
+# def load_names_from_csv(csv_path: Path) -> List[str]:
+#     with open(csv_path) as f:
+#         return [row[0] for row in csv.reader(f) if row]
 
-async def async_main() -> None:
-    names = []
-    with open("configs/new_schools.csv", "r", newline="") as file:
-        csv_reader = csv.reader(file)
-        for row in csv_reader:
-            names.append(row[0])
-    try:
-        sources = await generate_for_schools(names)
-        if not sources:
-            logger.warning("No sources generated")
-            return
-        update_sources_file(sources)
-    finally:
-        await close_playwright()
+# async def async_main() -> None:
+#     names = []
+#     with open("configs/new_schools.csv", "r", newline="") as file:
+#         csv_reader = csv.reader(file)
+#         for row in csv_reader:
+#             names.append(row[0])
+#     try:
+#         sources = await generate_for_schools(names)
+#         if not sources:
+#             logger.warning("No sources generated")
+#             return
+#         update_sources_file(sources)
+#     finally:
+#         await close_playwright()
 
 
 # FOR TESTING PURPOSES
 
-def main() -> None:
-    asyncio.run(async_main())
+# def main() -> None:
+#     asyncio.run(async_main())
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

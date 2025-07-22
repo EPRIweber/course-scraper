@@ -22,6 +22,7 @@ from src.schema_manager import generate_schema, validate_schema
 from src.scraper import scrape_urls
 from src.classify_manager import classify_courses, flatten_taxonomy
 from src.storage import SqlServerStorage, StorageBackend
+from src.pipeline import run_scrape_pipeline
 
 LOGGING: dict = {
   "version": 1,
@@ -365,17 +366,24 @@ async def main():
             logger.warning("No sources found; skipping all processing tasks.")
             return
 
-        # 2.  Kick off scraping tasks
-        # tasks = [process_schema(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
-        # tasks = [process_test_schema(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
-        # tasks = [process_crawl(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks, return_exceptions=True)
-        tasks = [process_scrape(run_id, src, storage) for src in sources]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        # tasks = [process_classify(run_id, src, storage) for src in sources]
-        # await asyncio.gather(*tasks)
+        # 2.  Run the unified pipeline for each source
+        for src in sources:
+            await storage.log(
+                run_id,
+                src.source_id,
+                int(Stage.CRAWL),
+                f"Pipeline start for {src.name}",
+            )
+            try:
+                await run_scrape_pipeline(src.name, run_id, storage)
+                await storage.log(
+                    run_id,
+                    src.source_id,
+                    int(Stage.STORAGE),
+                    f"Pipeline complete for {src.name}",
+                )
+            except Exception as exc:
+                logger.exception("Pipeline failed for %s: %s", src.name, exc)
 
         # await asyncio.gather(*tasks, return_exceptions=True)
 
