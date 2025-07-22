@@ -11,6 +11,7 @@ from collections import deque
 import re
 from typing import Set
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 import logging
 import random
 import ssl
@@ -74,11 +75,19 @@ async def _static_bfs_crawl(
     timeout: int
 ) -> Set[str]:
     start = urlparse(base_exclude or root_url)
-    # print(">>> parsing:", base_exclude or root_url)
+    print(">>> parsing:", base_exclude or root_url)
     domain = start.netloc
     root_path = (start.path.rstrip("/") + "/") if start.path else "/"
     # print(f'ROOT PATH: {root_path}')
     # print(f"START: {start}")
+
+    rp = RobotFileParser()
+    try:
+        rp.set_url(urljoin(root_url, "/robots.txt"))
+        rp.read()
+    except Exception as e:
+        logger.warning("Failed to read robots.txt: %s", e)
+    delay = rp.crawl_delay("*") or 1.0
 
     def _inside_start_path(u: str) -> bool:
         p = urlparse(u)
@@ -100,10 +109,12 @@ async def _static_bfs_crawl(
 
 
 
+    limits = httpx.Limits(max_connections=1, max_keepalive_connections=1)
     async with httpx.AsyncClient(
         timeout=timeout,
         follow_redirects=True,
-        verify=False
+        verify=False,
+        limits=limits,
     ) as client:
         resp = await client.get(str(root_url))
         resp.raise_for_status()
@@ -119,7 +130,7 @@ async def _static_bfs_crawl(
 
                 try:
                     logger.debug(f"Crawling URL (depth {depth}): {url}")
-                    html = await fetch_with_fallback(url, client, sem)
+                    html = await fetch_with_fallback(url, client, sem, delay=delay)
                 except Exception:
                     # already logged in helper
                     continue
@@ -157,13 +168,14 @@ async def _static_bfs_crawl(
         else:
             while queue:
                 url, depth = queue.popleft()
+                print(f"Processing URL: {url} at depth {depth}")
                 if url in seen or depth >= max_crawl_depth:
                     continue
                 seen.add(url)
 
                 try:
                     logger.debug(f"Crawling URL (depth {depth}): {url}")
-                    html = await fetch_with_fallback(url, client, sem)
+                    html = await fetch_with_fallback(url, client, sem, delay=delay)
                 except Exception:
                     # already logged in helper
                     continue

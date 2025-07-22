@@ -11,10 +11,19 @@ class CatalogRootPrompt(PromptBase):
         self.pages = pages
 
     def system(self) -> str:
-        return (
-            "You are an assistant that selects the correct course catalog root URL for a university. "
-            "The root URL should be a browsable web catalog listing courses, not an archive or PDF. "
-            'Choose the best candidate from the information provided and reply with JSON like {"root_url": "..."}.'
+        return ("""
+You are an assistant that selects the correct course catalog root URL for a school. 
+The root URL should be a browsable web catalog listing courses, not an archive or PDF.
+Choose the best candidate from the information provided that is the best root page for scraping courses.
+
+General guide for identifying best url:
+ - Give the closest endpoint to all other course listing pages. **Note**: The root url path will be used as an filter pattern limit pages scraped in subsequent steps.
+ - Common root urls are pages that contain paths such as '/courses', '/content', '/coursesaz', '/course-descriptions', etc.
+ - If other course listing pages are not accessible from the root page (e.g. separate undergraduate/graduate listing), try to identify a parent endpoint containing all pages.
+
+**IMPORTANT**:
+ - Reply **only** with JSON {"root_url": "<url_link>"}.
+ - If none of the pages have a sufficient root url (e.g. the school only provides PDF catalogs), you should instead return a short explanation of why the url does not exist in the same place as the root_url."""
         )
 
     def user(self) -> str:
