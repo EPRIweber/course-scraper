@@ -26,11 +26,6 @@ from .storage import SqlServerStorage, StorageBackend
 # The real implementations of these helpers are expected to exist elsewhere in
 # the code base.  Local stubs keep this module importable until those modules
 # are available.
-async def discover_catalog_root(school: str) -> str:  # pragma: no cover - stub
-    raise NotImplementedError
-
-async def discover_schema_url(root_url: str, candidates: List[str]) -> str:  # pragma: no cover - stub
-    raise NotImplementedError
 
 logger = logging.getLogger(__name__)
 
