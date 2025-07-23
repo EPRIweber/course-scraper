@@ -27,36 +27,35 @@ GOOGLE_CX = os.getenv("GOOGLE_CX")
 
 KEYWORDS = ["catalog", "bulletin", "courses", "curriculum"]
 
-async def discover_source_config(name: str) -> SourceConfig:
+async def discover_source_config(name: str) -> tuple[SourceConfig, int, int]:
     """Discover a ``SourceConfig`` for ``name``."""
-    root, schema = await discover_catalog_urls(name)
+    root, schema, root_usage, schema_usage = await discover_catalog_urls(name)
     return SourceConfig(
         source_id=f"LOCAL_{name}",
         name=name,
         root_url=root,
         schema_url=schema,
-    )
+    ), root_usage, schema_usage
 
-
-async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
+async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str, int, int]]:
     """Return root and schema URLs discovered for ``school``."""
     query = f"{school} course description catalog bulletin site"
     try:
         results = await google_search(query)
     except Exception as e:
         logger.warning("Search failed for %s", school)
-        raise logger.exception(e)
+        raise e
 
     candidates = filter_catalog_urls(results)
     combined = candidates + results
     ordered_by_priority = list(OrderedDict.fromkeys(combined))
 
     browser_cfg = BrowserConfig(headless=True, verbose=False)
-    run_cfg = make_markdown_run_cfg(timeout_s=30)
+    run_cfg = make_markdown_run_cfg(timeout_s=60)
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
         pages = await fetch_snippets(crawler, ordered_by_priority[:5], run_cfg)
-        root_res = await llm_select_root(school, pages)
+        root_res, root_usage = await llm_select_root(school, pages)
         if not root_res:
             return None
         root_url, _ = root_res
@@ -68,12 +67,12 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
             schema_url=root_url,
         )
         all_urls = await crawl_and_collect_urls(temp)
-        schema_pages = await fetch_snippets(crawler, all_urls[:5], run_cfg)
-        schema_res = await llm_select_schema(school, root_url, schema_pages)
+        schema_pages = await fetch_snippets(crawler, all_urls[:min(30, len(all_urls))], run_cfg)
+        schema_res, schema_usage = await llm_select_schema(school, root_url, schema_pages)
         if not schema_res:
             return None
         schema_url, _ = schema_res
-        return root_url, schema_url
+        return root_url, schema_url, root_usage, schema_usage
 
 def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     """Return a crawler run configuration for Markdown extraction."""
@@ -156,7 +155,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
                 url = data.get("root_url")
             except Exception as ex:
                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
-                return None
+                raise ex
         else:
             logger.warning("Root LLM returned non-list data: %s", data)
             return None
@@ -167,7 +166,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
         return url, prompt_t + completion_t
     except Exception as e:
         logger.warning("LLM root selection failed for %s", school)
-        return None
+        raise e
 
 async def llm_select_schema(
     school: str,
@@ -204,7 +203,7 @@ async def llm_select_schema(
                 url = data.get("schema_url")
             except Exception as ex:
                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
-                return None
+                raise ex
         else:
             logger.warning("Schema LLM returned non-list data: %s", data)
             return 
@@ -215,7 +214,7 @@ async def llm_select_schema(
         return url, prompt_t + completion_t
     except Exception as e:
         logger.warning("LLM schema selection failed for %s", school)
-        return None
+        raise e
 
 
 # async def generate_config(name: str, ipeds_url: Optional[str] = None) -> List[SourceConfig]:
