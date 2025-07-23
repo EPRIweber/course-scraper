@@ -37,6 +37,44 @@ async def discover_source_config(name: str) -> SourceConfig:
         schema_url=schema,
     )
 
+
+async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
+    """Return root and schema URLs discovered for ``school``."""
+    query = f"{school} course description catalog bulletin site"
+    try:
+        results = await google_search(query)
+    except Exception as e:
+        logger.warning("Search failed for %s", school)
+        raise logger.exception(e)
+
+    candidates = filter_catalog_urls(results)
+    combined = candidates + results
+    ordered_by_priority = list(OrderedDict.fromkeys(combined))
+
+    browser_cfg = BrowserConfig(headless=True, verbose=False)
+    run_cfg = make_markdown_run_cfg(timeout_s=30)
+
+    async with AsyncWebCrawler(config=browser_cfg) as crawler:
+        pages = await fetch_snippets(crawler, ordered_by_priority[:5], run_cfg)
+        root_res = await llm_select_root(school, pages)
+        if not root_res:
+            return None
+        root_url, _ = root_res
+
+        temp = SourceConfig(
+            source_id=f"TEMP_{school}",
+            name=school,
+            root_url=root_url,
+            schema_url=root_url,
+        )
+        all_urls = await crawl_and_collect_urls(temp)
+        schema_pages = await fetch_snippets(crawler, all_urls[:5], run_cfg)
+        schema_res = await llm_select_schema(school, root_url, schema_pages)
+        if not schema_res:
+            return None
+        schema_url, _ = schema_res
+        return root_url, schema_url
+
 def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     """Return a crawler run configuration for Markdown extraction."""
     return CrawlerRunConfig(
@@ -49,7 +87,7 @@ def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     )
 
 async def fetch_snippets(
-    crawler: AsyncWebCrawler, urls: List[str], run_cfg: CrawlerRunConfig, *, max_concurrency: int = 5
+    crawler: AsyncWebCrawler, urls: List[str], run_cfg: CrawlerRunConfig, *, max_concurrency: int = 1
 ) -> list[dict]:
     """Fetch pages with the crawler and return Markdown snippets."""
     results = await crawler.arun_many(urls, config=run_cfg, max_concurrency=max_concurrency)
@@ -179,42 +217,6 @@ async def llm_select_schema(
         logger.warning("LLM schema selection failed for %s", school)
         return None
 
-async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str]]:
-    """Return root and schema URLs discovered for ``school``."""
-    query = f"{school} course description catalog bulletin site"
-    try:
-        results = await google_search(query)
-    except Exception as e:
-        logger.warning("Search failed for %s", school)
-        raise logger.exception(e)
-
-    candidates = filter_catalog_urls(results)
-    combined = candidates + results
-    ordered_by_priority = list(OrderedDict.fromkeys(combined))
-
-    browser_cfg = BrowserConfig(headless=True, verbose=False)
-    run_cfg = make_markdown_run_cfg(timeout_s=30)
-
-    async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        pages = await fetch_snippets(crawler, ordered_by_priority[:5], run_cfg)
-        root_res = await llm_select_root(school, pages)
-        if not root_res:
-            return None
-        root_url, _ = root_res
-
-        temp = SourceConfig(
-            source_id=f"TEMP_{school}",
-            name=school,
-            root_url=root_url,
-            schema_url=root_url,
-        )
-        all_urls = await crawl_and_collect_urls(temp)
-        schema_pages = await fetch_snippets(crawler, all_urls[:5], run_cfg)
-        schema_res = await llm_select_schema(school, root_url, schema_pages)
-        if not schema_res:
-            return None
-        schema_url, _ = schema_res
-        return root_url, schema_url
 
 # async def generate_config(name: str, ipeds_url: Optional[str] = None) -> List[SourceConfig]:
 #     source: SourceConfig = None
