@@ -23,7 +23,6 @@ from src.schema_manager import generate_schema, validate_schema
 from src.scraper import scrape_urls
 from src.classify_manager import classify_courses, flatten_taxonomy
 from src.storage import SqlServerStorage, StorageBackend
-from src.pipeline import run_scrape_pipeline
 
 LOGGING: dict = {
   "version": 1,
@@ -378,12 +377,13 @@ async def main():
                 new_schools.append(r[0])
 
         try:
-            tasks = [run_scrape_pipeline(run_id, name, storage) for name in new_schools]
+            tasks = [run_scrape_pipeline(name, run_id, storage) for name in new_schools]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            for result in results:
+            for school, result in zip(new_schools, results):
                 if isinstance(result, Exception):
-                    await storage.log(run_id, f"Task failed with exception: {result}")
+                    # await storage.log(run_id, f"Task failed with exception: {result}")
+                    logger.error("Pipeline for %s FAILED: %s", school, result)
                 else:
                     print(f"Task succeeded with result: {result}")
 

@@ -1,4 +1,5 @@
 # src/config_generator.py
+import asyncio
 from collections import OrderedDict
 import json
 import os
@@ -21,6 +22,9 @@ from .config import SourceConfig
 
 logger = logging.getLogger(__name__)
 
+_GOOGLE_SEARCH_SEM = asyncio.BoundedSemaphore(1)
+
+
 GOOGLE_CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CX = os.getenv("GOOGLE_CX")
@@ -37,7 +41,7 @@ async def discover_source_config(name: str) -> tuple[SourceConfig, int, int]:
         schema_url=schema,
     ), root_usage, schema_usage
 
-async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str, int, int]]:
+async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     """Return root and schema URLs discovered for ``school``."""
     query = f"{school} course description catalog bulletin site"
     try:
@@ -55,10 +59,9 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str, int, in
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
         pages = await fetch_snippets(crawler, ordered_by_priority[:5], run_cfg)
-        root_res, root_usage = await llm_select_root(school, pages)
-        if not root_res:
-            return None
-        root_url, _ = root_res
+        root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
+        if not root_url:
+            raise Exception(f"No root URL found for {school}")
 
         temp = SourceConfig(
             source_id=f"TEMP_{school}",
@@ -68,10 +71,9 @@ async def discover_catalog_urls(school: str) -> Optional[Tuple[str, str, int, in
         )
         all_urls = await crawl_and_collect_urls(temp)
         schema_pages = await fetch_snippets(crawler, all_urls[:min(30, len(all_urls))], run_cfg)
-        schema_res, schema_usage = await llm_select_schema(school, root_url, schema_pages)
-        if not schema_res:
-            return None
-        schema_url, _ = schema_res
+        schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
+        if not schema_url:
+            raise Exception(f"No schema URL returned for {school}")
         return root_url, schema_url, root_usage, schema_usage
 
 def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
@@ -103,12 +105,13 @@ async def google_search(query: str, *, count: int = 5) -> List[str]:
         raise RuntimeError(
             "GOOGLE_API_KEY and GOOGLE_CX environment variables are required"
         )
-    params = {"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": query, "num": count}
-    async with httpx.AsyncClient(timeout=60000 * 10) as client:
-        resp = await client.get(GOOGLE_CSE_ENDPOINT, params=params)
-        resp.raise_for_status()
-        data = resp.json()
-    return [item["link"] for item in data.get("items", [])]
+    async with _GOOGLE_SEARCH_SEM:
+        params = {"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": query, "num": count}
+        async with httpx.AsyncClient(timeout=60000 * 10, verify=False) as client:
+            resp = await client.get(GOOGLE_CSE_ENDPOINT, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+        return [item["link"] for item in data.get("items", [])]
 
 def filter_catalog_urls(urls: List[str]) -> List[str]:
     filtered = []
@@ -118,13 +121,13 @@ def filter_catalog_urls(urls: List[str]) -> List[str]:
             filtered.append(url)
     return filtered
 
-async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str, int]]:
+async def llm_select_root(school: str, pages: List[dict]) -> tuple[str, int]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
     # print("⟳ pages passed into llm_select_root:", pages)
     logger.debug("REACHED llm_select_root")
     if not pages:
         logger.warning("No pages provided to llm_select_root")
-        return None
+        raise Exception(f"No pages provided to llm_select_root for {school}")
     prompt = CatalogRootPrompt(school, pages)
     llm = GemmaModel()
     llm.set_response_format({
@@ -158,7 +161,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> Optional[tuple[str,
                 raise ex
         else:
             logger.warning("Root LLM returned non-list data: %s", data)
-            return None
+            raise Exception("Root LLM returned non-list data: %s", data)
         # print(resp)
         prompt_t = resp.get("usage", {}).get("prompt_tokens")
         completion_t = resp.get("usage", {}).get("completion_tokens")
@@ -172,7 +175,7 @@ async def llm_select_schema(
     school: str,
     root_url: str,
     pages: List[str]
-) -> Optional[tuple[str, int]]:
+) -> tuple[str, int]:
     prompt = CatalogSchemaPrompt(school, root_url, pages)
     sys_p = prompt.system()
     user_p = prompt.user()
@@ -206,7 +209,7 @@ async def llm_select_schema(
                 raise ex
         else:
             logger.warning("Schema LLM returned non-list data: %s", data)
-            return 
+            raise Exception("Schema LLM returned non-list data: %s", data)
         # print(resp)
         prompt_t = resp.get("usage", {}).get("prompt_tokens")
         completion_t = resp.get("usage", {}).get("completion_tokens")
