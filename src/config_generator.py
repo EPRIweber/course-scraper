@@ -92,12 +92,17 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
         if not root_url:
             raise Exception(f"No root URL found for {school}")
+        
+        pr = urlparse(root_url)
+        shared_domain = f"{pr.scheme}://{pr.netloc}"
 
         temp = SourceConfig(
             source_id=f"TEMP_{school}",
             name=school,
             root_url=root_url,
             schema_url=root_url,
+            url_base_exclude=shared_domain,
+            crawl_depth=3
         )
         all_urls = await crawl_and_collect_urls(temp, make_root_filter=False)
         schema_pages = await fetch_snippets(crawler, all_urls[:min(60, len(all_urls))], run_cfg)

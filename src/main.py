@@ -371,9 +371,9 @@ async def run_scrape_pipeline(
     await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
     await _log(real_id, Stage.STORAGE, f"Beginning pipeline for {school}")
     
-    # await process_schema(run_id, src_cfg, storage)
-    # await process_crawl(run_id, src_cfg, storage)
-    # await process_scrape(run_id, src_cfg, storage)
+    await process_schema(run_id, src_cfg, storage)
+    await process_crawl(run_id, src_cfg, storage)
+    await process_scrape(run_id, src_cfg, storage)
     # await process_classify(run_id, src_cfg, storage)
     # logger.info("Completed pipeline for %s", school)
     await _log(real_id, Stage.STORAGE, f"Completed pipeline for {school}")
