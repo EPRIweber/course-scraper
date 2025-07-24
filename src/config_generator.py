@@ -49,16 +49,30 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     except Exception as e:
         logger.warning("Search failed for %s", school)
         raise e
+    
+    total = []
+    for r in results:
+        total += crawl_and_collect_urls(
+            SourceConfig(
+                source_id=f"TEMP_{school}",
+                name=school,
+                root_url=r,
+                schema_url=r,
+                crawl_depth=1
+            ),
+            make_root_filter=False
+        )
+    
+    candidates = filter_catalog_urls(total)
 
-    candidates = filter_catalog_urls(results)
-    combined = candidates + results
+    combined = candidates + total
     ordered_by_priority = list(OrderedDict.fromkeys(combined))
 
     browser_cfg = BrowserConfig(headless=True, verbose=False)
     run_cfg = make_markdown_run_cfg(timeout_s=60)
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        pages = await fetch_snippets(crawler, ordered_by_priority[:5], run_cfg)
+        pages = await fetch_snippets(crawler, ordered_by_priority, run_cfg)
         root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
         if not root_url:
             raise Exception(f"No root URL found for {school}")
@@ -69,8 +83,8 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
             root_url=root_url,
             schema_url=root_url,
         )
-        all_urls = await crawl_and_collect_urls(temp)
-        schema_pages = await fetch_snippets(crawler, all_urls[:min(30, len(all_urls))], run_cfg)
+        all_urls = await crawl_and_collect_urls(temp, make_root_filter=False)
+        schema_pages = await fetch_snippets(crawler, all_urls[:min(60, len(all_urls))], run_cfg)
         schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
         if not schema_url:
             raise Exception(f"No schema URL returned for {school}")
@@ -99,7 +113,7 @@ async def fetch_snippets(
             pages.append({"url": r.url, "snippet": snippet})
     return pages
 
-async def google_search(query: str, *, count: int = 5) -> List[str]:
+async def google_search(query: str, *, count: int = 4) -> List[str]:
     """Return a list of result URLs from Google Programmable Search."""
     if not GOOGLE_API_KEY or not GOOGLE_CX:
         raise RuntimeError(
@@ -147,7 +161,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> tuple[str, int]:
         resp = llm.chat(
             [
                 {"role": "system", "content": sys_p},
-                {"role": "user", "content": user_p},
+                {"role": "user", "content": user_p[:min(250_000, len(user_p))]},
             ]
         )
         # print(f"SYSTEM PROMPT:\n{sys_p}\n\n\u25B6 USER PROMPT:\n{user_p}\n")
@@ -196,7 +210,7 @@ async def llm_select_schema(
         resp = llm.chat(
             [
                 {"role": "system", "content": sys_p},
-                {"role": "user", "content": user_p},
+                {"role": "user", "content": user_p[:min(250_000, len(user_p))]},
             ]
         )
         data = json.loads(resp["choices"][0]["message"]["content"])
@@ -218,61 +232,3 @@ async def llm_select_schema(
     except Exception as e:
         logger.warning("LLM schema selection failed for %s", school)
         raise e
-
-
-# async def generate_config(name: str, ipeds_url: Optional[str] = None) -> List[SourceConfig]:
-#     source: SourceConfig = None
-#     print(f"Discovering catalog for {name}...")
-#     try:
-#         res = await discover_catalog_urls(name)
-#     except Exception as e:
-#         logger.warning("Failed to discover catalog URLs for %s", name)
-#         return None
-#     if not res:
-#         logger.warning("No catalog found %s", name)
-#         return None
-#     root_url, schema_url = res
-#     src = create_source(name, root_url, schema_url)
-#     print(f"  found: {root_url} -> {schema_url}")
-#     return src
-
-# def update_sources_file(new_sources: List[SourceConfig]) -> None:
-#     data = {}
-#     existing = data.setdefault("sources", [])
-#     for src in new_sources:
-#         existing.append(
-#             src.model_dump(mode="json", exclude_defaults=True, exclude_none=True)
-#         )
-
-#     data["sources"] = existing
-#     print(yaml.safe_dump(data, sort_keys=False))
-#     with open("configs/test_source_generation.yaml", "w") as f:
-#         yaml.safe_dump(data, f, sort_keys=False)
-
-# def load_names_from_csv(csv_path: Path) -> List[str]:
-#     with open(csv_path) as f:
-#         return [row[0] for row in csv.reader(f) if row]
-
-# async def async_main() -> None:
-#     names = []
-#     with open("configs/new_schools.csv", "r", newline="") as file:
-#         csv_reader = csv.reader(file)
-#         for row in csv_reader:
-#             names.append(row[0])
-#     try:
-#         sources = await generate_for_schools(names)
-#         if not sources:
-#             logger.warning("No sources generated")
-#             return
-#         update_sources_file(sources)
-#     finally:
-#         await close_playwright()
-
-
-# FOR TESTING PURPOSES
-
-# def main() -> None:
-#     asyncio.run(async_main())
-
-# if __name__ == "__main__":
-#     main()

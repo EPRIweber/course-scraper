@@ -88,10 +88,12 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         if (not schema) or (not schema.get("baseSelector")):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
-            check: ValidationCheck = await validate_schema(
+            check, output = await validate_schema(
                 schema=schema,
                 source=source
             )
+            check: ValidationCheck
+            await _log(stage, output)
             if check.valid:
                 await _log(stage, "successfully validated generated schema")
                 await storage.save_schema(source.source_id, schema)
@@ -332,24 +334,46 @@ async def run_scrape_pipeline(
         logger.info(f"[{school}] {msg}")
         await storage.log(run_id, source_id, int(st), msg)
     try:
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Generating Source for {school}"
+        )
         src_cfg, root_usage, schema_usage = await discover_source_config(school)
         src_cfg: SourceConfig
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Source Generated for {school}"
+        )
     except Exception as e:
-        logger.exception("Config generation failed for %s: %s", school, e)
-        raise Exception("Config generation failed for %s: %s", school, e)
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Config generation failed for {school}: {e}"
+        )
+        raise Exception(f"Config generation failed for {school}: {e}")
     try:
         real_id = await storage.ensure_source(src_cfg)
         src_cfg.source_id = real_id
     except Exception as e:
-        logger.exception("Failed to upsert source %s: %s", school, e)
-        raise Exception("Config generation failed for %s: %s", school, e)
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Failed to upsert source {school}: {e}"
+        )
+        raise Exception(f"Failed to upsert source {school}: {e}")
         
     await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
     await _log(real_id, Stage.STORAGE, f"Beginning pipeline for {school}")
     
-    await process_schema(run_id, src_cfg, storage)
-    await process_crawl(run_id, src_cfg, storage)
-    await process_scrape(run_id, src_cfg, storage)
+    # await process_schema(run_id, src_cfg, storage)
+    # await process_crawl(run_id, src_cfg, storage)
+    # await process_scrape(run_id, src_cfg, storage)
     # await process_classify(run_id, src_cfg, storage)
     # logger.info("Completed pipeline for %s", school)
     await _log(real_id, Stage.STORAGE, f"Completed pipeline for {school}")
@@ -369,6 +393,18 @@ async def main():
 
     logger.info("Run ID: %d", run_id)
 
+    MAX_CONCURRENT = 10
+    sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
+    async def limited_run(school: str, run_id: int, storage: StorageBackend):
+        async with sem:
+            await storage.log(
+                run_id=run_id,
+                src_id=None,
+                stage=Stage.CRAWL,
+                msg=(f"[{school}] starting (slots left: {sem._value})")
+            )
+            return await run_scrape_pipeline(school, run_id, storage)
+
     try:
         new_schools = []
         with open('configs/new_schools.csv', 'r') as f:
@@ -377,24 +413,33 @@ async def main():
                 new_schools.append(r[0])
 
         try:
-            tasks = [run_scrape_pipeline(name, run_id, storage) for name in new_schools]
+            tasks = [
+                limited_run(school, run_id, storage)
+                for school in new_schools
+            ]
+
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for school, result in zip(new_schools, results):
                 if isinstance(result, Exception):
-                    # await storage.log(run_id, f"Task failed with exception: {result}")
-                    logger.error("Pipeline for %s FAILED: %s", school, result)
+                    logger.error(f"Pipeline for {school} FAILED: {result}")
+                    await storage.log(
+                        run_id=run_id,
+                        src_id=None,
+                        stage=Stage.CRAWL,
+                        msg=f"Pipeline for {school} FAILED: {result}"
+                    )
                 else:
                     print(f"Task succeeded with result: {result}")
 
         except Exception as exc:
-            logger.exception("Pipeline failure for batch %s: %s", str(), exc)
-            # TO DO: Configure storage.log without src id, instead shool ID.
-                # Need to implement:
-                    # Has school already been scraped?
-                    # Does school exist in IPEDS Data (match on cleaned name)?
-                    # Create table / ID for distinct school (possibly multiple source configs)
-            pass
+            await storage.log(
+                run_id=run_id,
+                src_id=None,
+                stage=Stage.CRAWL,
+                msg=f"Pipeline Fail: {exc}"
+            )
+            raise Exception(exc)
 
     except Exception as exc:
         logger.exception("Critical error in run %d: %s", run_id, exc)
@@ -406,14 +451,17 @@ async def main():
 
 async def testing():
     test_source = config.sources[0]
-    print(f"generating test schema for {test_source.name}")
-    schema = None
-    print(schema)
-    check: ValidationCheck = await validate_schema(
-        schema=schema,
-        source=test_source
-    )
-    
+    # print(f"generating test schema for {test_source.name}")
+    # schema = None
+    # print(schema)
+    # check: ValidationCheck = await validate_schema(
+    #     schema=schema,
+    #     source=test_source
+    # )
+
+
+    urls = await crawl_and_collect_urls(test_source)
+    print(urls)
 
 if __name__ == "__main__":
     asyncio.run(main())

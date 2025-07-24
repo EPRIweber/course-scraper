@@ -38,7 +38,7 @@ _crawler: AsyncWebCrawler | None = None
 # public entrypoint
 # ———————————————————————————————————————————————————————————————
 
-async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
+async def crawl_and_collect_urls(source: SourceConfig, make_root_filter: bool = True) -> list[str]:
     logger.debug(f"""Running crawl with:
   max_crawl_depth:{source.crawl_depth}
   include_external:{source.include_external}
@@ -51,7 +51,8 @@ async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
         concurrency=source.max_concurrency,
         exclude_patterns=source.url_exclude_patterns,
         base_exclude=source.url_base_exclude,
-        timeout=source.page_timeout_s
+        timeout=source.page_timeout_s,
+        make_root_filter=make_root_filter
     )
     return sorted(urls)
 
@@ -72,7 +73,8 @@ async def _static_bfs_crawl(
     concurrency: int,
     exclude_patterns: list[str],
     base_exclude: str | None,
-    timeout: int
+    timeout: int,
+    make_root_filter
 ) -> Set[str]:
     start = urlparse(base_exclude or root_url)
     print(">>> parsing:", base_exclude or root_url)
@@ -91,7 +93,7 @@ async def _static_bfs_crawl(
 
     def _inside_start_path(u: str) -> bool:
         p = urlparse(u)
-        return p.netloc == domain and p.path.startswith(root_path)
+        return p.netloc == domain and (p.path.startswith(root_path) if make_root_filter else True)
 
     class ExcludePatternFilter:
         def __init__(self, patterns):

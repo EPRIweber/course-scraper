@@ -201,7 +201,7 @@ async def _generate_schema_from_llm(
 async def validate_schema(
     schema: dict,
     source: SourceConfig
-) -> ValidationCheck:
+) -> tuple[ValidationCheck, str]:
     """
     Quickly sanity-check a freshly-generated schema against
     ``source.schema_url``.
@@ -225,6 +225,7 @@ async def validate_schema(
     #     return ValidationCheck(False, [], [])
 
     at_least_one_good = False
+    output = None
 
     try:
         # Scrape just the schema_url page
@@ -236,6 +237,7 @@ async def validate_schema(
         
         if records:
             log.info("Sample record for schema validation:\n%s", json.dumps(records[0], indent=2))
+            output = "Sample record from schema validation:\n%s", json.dumps(records[0], indent=4)
             print("Sample record for schema validation:\n%s", json.dumps(records[0], indent=4))
         else:
             log.warning(f"No records returned for {source.name}")
@@ -272,4 +274,4 @@ async def validate_schema(
         valid=valid,
         fields_missing=fields_missing,
         errors=errors
-    )
+    ), output
