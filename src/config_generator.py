@@ -5,6 +5,7 @@ import json
 import os
 import logging
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
@@ -34,11 +35,26 @@ KEYWORDS = ["catalog", "bulletin", "courses", "curriculum"]
 async def discover_source_config(name: str) -> tuple[SourceConfig, int, int]:
     """Discover a ``SourceConfig`` for ``name``."""
     root, schema, root_usage, schema_usage = await discover_catalog_urls(name)
+    
+    pr = urlparse(root)
+    ps = urlparse(schema)
+
+    shared_domain = f"{pr.scheme}://{pr.netloc}"
+    url_base_exclude = ""
+
+    # if they're on the same host but schema isn't a sub‑path of root
+    if pr.netloc == ps.netloc:
+        root_path = pr.path.rstrip("/") + "/"
+        if not ps.path.startswith(root_path):
+            url_base_exclude = shared_domain
+
+
     return SourceConfig(
         source_id=f"LOCAL_{name}",
         name=name,
         root_url=root,
         schema_url=schema,
+        url_base_exclude=url_base_exclude
     ), root_usage, schema_usage
 
 async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
@@ -52,7 +68,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     
     total = []
     for r in results:
-        total += crawl_and_collect_urls(
+        total += await crawl_and_collect_urls(
             SourceConfig(
                 source_id=f"TEMP_{school}",
                 name=school,
