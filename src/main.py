@@ -450,7 +450,7 @@ async def main():
         await close_playwright()
 
 async def testing():
-    test_source = config.sources[0]
+    # test_source = config.sources[0]
     # print(f"generating test schema for {test_source.name}")
     # schema = None
     # print(schema)
@@ -460,9 +460,15 @@ async def testing():
     # )
 
 
-    urls = await crawl_and_collect_urls(test_source)
-    print(urls)
+    # urls = await crawl_and_collect_urls(test_source)
+    # print(urls)
+
+    src_cfg, root_usage, schema_usage = await discover_source_config("oregon state university")
+
+    print(
+f"""Source Config:\n{src_cfg}"""
+    )
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    # asyncio.run(testing())
+    # asyncio.run(main())
+    asyncio.run(testing())

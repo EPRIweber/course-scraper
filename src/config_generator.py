@@ -10,11 +10,13 @@ from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
+from crawl4ai.utils import get_content_of_website_optimized
 
 from crawl4ai import AsyncWebCrawler
 import httpx
 
 from src.crawler import crawl_and_collect_urls
+from src.render_utils import fetch_page
 
 from .llm_client import GemmaModel
 from .prompts.catalog_urls import CatalogRootPrompt, CatalogSchemaPrompt
@@ -24,6 +26,7 @@ from .config import SourceConfig
 logger = logging.getLogger(__name__)
 
 _GOOGLE_SEARCH_SEM = asyncio.BoundedSemaphore(1)
+# _FETCH_PAGE_SEM = asyncio.BoundedSemaphore(1)
 
 
 GOOGLE_CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
@@ -84,32 +87,37 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     combined = candidates + total
     ordered_by_priority = list(OrderedDict.fromkeys(combined))
 
-    browser_cfg = BrowserConfig(headless=True, verbose=False)
-    run_cfg = make_markdown_run_cfg(timeout_s=60)
+    # browser_cfg = BrowserConfig(headless=True, verbose=False)
+    # run_cfg = make_markdown_run_cfg(timeout_s=60)
 
-    async with AsyncWebCrawler(config=browser_cfg) as crawler:
-        pages = await fetch_snippets(crawler, ordered_by_priority, run_cfg)
-        root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
-        if not root_url:
-            raise Exception(f"No root URL found for {school}")
-        
-        pr = urlparse(root_url)
-        shared_domain = f"{pr.scheme}://{pr.netloc}"
+    # async with AsyncWebCrawler(config=browser_cfg) as crawler:
+    pages = await fetch_snippets(ordered_by_priority[:min(100, len(ordered_by_priority))])
+    root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
+    if not root_url:
+        raise Exception(f"No root URL found for {school}")
+    
+    pr = urlparse(root_url)
+    shared_domain = f"{pr.scheme}://{pr.netloc}"
 
-        temp = SourceConfig(
-            source_id=f"TEMP_{school}",
-            name=school,
-            root_url=root_url,
-            schema_url=root_url,
-            url_base_exclude=shared_domain,
-            crawl_depth=3
-        )
-        all_urls = await crawl_and_collect_urls(temp, make_root_filter=False)
-        schema_pages = await fetch_snippets(crawler, all_urls[:min(60, len(all_urls))], run_cfg)
-        schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
-        if not schema_url:
-            raise Exception(f"No schema URL returned for {school}")
-        return root_url, schema_url, root_usage, schema_usage
+    temp = SourceConfig(
+        source_id=f"TEMP_{school}",
+        name=school,
+        root_url=root_url,
+        schema_url=root_url,
+        url_base_exclude=shared_domain,
+        crawl_depth=3
+    )
+    all_urls = await crawl_and_collect_urls(temp, make_root_filter=False)
+    seen = set(); unique = []
+    for u in all_urls:
+        if u not in seen:
+            seen.add(u); unique.append(u)
+
+    schema_pages = await fetch_snippets(unique[:min(100, len(unique))])
+    schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
+    if not schema_url:
+        raise Exception(f"No schema URL returned for {school}")
+    return root_url, schema_url, root_usage, schema_usage
 
 def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     """Return a crawler run configuration for Markdown extraction."""
@@ -122,16 +130,17 @@ def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
         page_timeout=timeout_s * 1000,
     )
 
-async def fetch_snippets(
-    crawler: AsyncWebCrawler, urls: List[str], run_cfg: CrawlerRunConfig, *, max_concurrency: int = 1
-) -> list[dict]:
-    """Fetch pages with the crawler and return Markdown snippets."""
-    results = await crawler.arun_many(urls, config=run_cfg, max_concurrency=max_concurrency)
+async def fetch_snippets(urls: List[str]) -> List[dict]:
+    """Fetch each URL via Playwright+HTTPX fallback and hand back raw HTML."""
     pages = []
-    for r in results:
-        if getattr(r, "success", False):
-            snippet = getattr(getattr(r, "markdown", None), "fit_markdown", None)
-            pages.append({"url": r.url, "snippet": snippet})
+    for url in urls:
+        try:
+            html = await fetch_page(url)
+            markdown_page = get_content_of_website_optimized(url, html)
+            pages.append({"url": url, "snippet": markdown_page})
+            await asyncio.sleep(0.2)
+        except Exception as e:
+            logger.debug("Failed to fetch %s for snippet: %s", url, e)
     return pages
 
 async def google_search(query: str, *, count: int = 4) -> List[str]:
