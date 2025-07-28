@@ -6,7 +6,7 @@ import os
 import logging
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
-from crawl4ai import AsyncWebCrawler
+from crawl4ai import AsyncWebCrawler, BM25ContentFilter
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
@@ -93,7 +93,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         # only keep “catalog”‑y ones
         catalogs = filter_catalog_urls(sub_urls)
         # build a small list you’ll actually fetch snippets for:
-        to_fetch = [hit] + catalogs[:5]   # 1 + up to 9 = 10 pages/site
+        to_fetch = [hit] + catalogs[:4]   # 1 + up to 9 = 10 pages/site
 
         # fetch and append
         pages += await fetch_snippets(to_fetch, return_html=True)
@@ -135,7 +135,7 @@ def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     return CrawlerRunConfig(
         cache_mode=CacheMode.ENABLED,
         markdown_generator=DefaultMarkdownGenerator(
-            content_filter=PruningContentFilter(threshold=0.5),
+            content_filter=PruningContentFilter(threshold=0.3),
             options={"ignore_links": True},
         ),
         page_timeout=timeout_s * 1000,
@@ -151,8 +151,9 @@ async def fetch_snippets(
         try:
             html = await fetch_page(url)
             if return_html:
-                pruner = PruningContentFilter(threshold=0.3)
+                pruner = PruningContentFilter(threshold=0.2)
                 chunks = pruner.filter_content(html)
+                chunks = filter(lambda chunk: chunk if chunk.strip() else None, chunks)
                 snippet = "\n".join(chunks)
             else:
                 snippet = get_content_of_website_optimized(url, html)

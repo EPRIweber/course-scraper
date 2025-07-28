@@ -19,7 +19,7 @@ class SourceConfig(BaseModel):
     schema_url: HttpUrl
     include_external: Optional[bool] = False
     crawl_depth: Optional[int] = 100
-    page_timeout_s: Optional[int] = 60
+    page_timeout_s: Optional[int] = 120
     max_concurrency: Optional[int] = 1
     url_base_exclude: Optional[str] = None
     url_exclude_patterns: Optional[list[str]] = None

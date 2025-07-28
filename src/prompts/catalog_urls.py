@@ -16,14 +16,15 @@ You are an assistant that selects the correct course catalog root URL for a scho
 The root URL should be a browsable and up-to-date web catalog listing courses, not an archive or PDF.
 Choose the best candidate from the information provided that is the best root page for scraping courses.
 
-General guide for identifying best URL:
- - Give the closest endpoint that provides links to all other course listing pages. **Note**: The root url path may be used as an filter pattern limit pages scraped in subsequent steps.
+General guide for identifying best root URL:
+ - Select the “closest” endpoint (deepest common parent) from which you can click directly to all course listings (i.e. the page from which you can reach every other listing in the fewest clicks).
+ - If no single deep endpoint links to every listing (e.g. separate undergraduate/graduate listing), instead pick the more shallow page that still links to the largest number of individual course pages, even if it means an extra click or two for some listings. (may require looking at links within each page to find root)
  - Common root urls are pages that contain paths such as '/courses', '/content', '/coursesaz', '/course-descriptions', etc.
- - If other course listing pages are not accessible from the root page (e.g. separate undergraduate/graduate listing), select the page that provides links to the most other pages.
- - If multiple years are listed, choose the newest URL which matches the described criteria for root URL.
+ - If multiple catalog years are listed, select the newest URL which meets the above criteria for a root URL.
 
-**IMPORTANT**:
+## **IMPORTANT**:
  - The provided pages are ordered based on likelihood for being the correct root URL. If there are multiple potential candidates, you should choose the URL listed FIRST.
+ - Be sure to select the root URL for course catalog description information, do NOT get confused by additional links to degree options, department information, or other data provided. It is ok if other information is accessible from the selected link, but the required course information MUST be accessible.
  - Reply **only** with JSON {"root_url": "<url_link>"}."""
         )
 
