@@ -68,8 +68,10 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         logger.warning("Search failed for %s", school)
         raise e
     
-    
-    top_hits = results[:3]
+    filtered = filter_catalog_urls(results)
+    combined = filtered + results
+    deduped = list(OrderedDict.fromkeys(combined))
+    top_hits = deduped[:3]
 
     # 1) build a flat list of {url,snippet} dicts
     pages: List[dict] = []
