@@ -88,7 +88,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         sub_urls = await crawl_and_collect_urls(
             temp,
             make_root_filter=False,
-            max_links_per_page=10
+            # max_links_per_page=10
         )
         # only keep “catalog”‑y ones
         catalogs = filter_catalog_urls(sub_urls)

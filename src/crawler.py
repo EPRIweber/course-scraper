@@ -228,7 +228,7 @@ async def _static_bfs_crawl(
             while queue:
                 url, depth = queue.popleft()
                 print(f"Processing URL: {url} at depth {depth}")
-                if url in seen or depth >= max_crawl_depth:
+                if url in seen or depth > max_crawl_depth:
                     continue
                 seen.add(url)
 

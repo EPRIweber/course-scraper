@@ -13,20 +13,22 @@ class CatalogRootPrompt(PromptBase):
     def system(self) -> str:
         return ("""
 You are an assistant that selects the correct course catalog root URL for a school. 
-The root URL should be a browsable up-to-date web catalog listing courses, not an archive or PDF.
+The root URL should be a browsable and up-to-date web catalog listing courses, not an archive or PDF.
 Choose the best candidate from the information provided that is the best root page for scraping courses.
 
-General guide for identifying best url:
- - Give the closest endpoint to all other course listing pages. **Note**: The root url path will be used as an filter pattern limit pages scraped in subsequent steps.
+General guide for identifying best URL:
+ - Give the closest endpoint that provides links to all other course listing pages. **Note**: The root url path may be used as an filter pattern limit pages scraped in subsequent steps.
  - Common root urls are pages that contain paths such as '/courses', '/content', '/coursesaz', '/course-descriptions', etc.
- - If other course listing pages are not accessible from the root page (e.g. separate undergraduate/graduate listing), try to identify a parent page containing all endpoints.
+ - If other course listing pages are not accessible from the root page (e.g. separate undergraduate/graduate listing), select the page that provides links to the most other pages.
+ - If multiple years are listed, choose the newest URL which matches the described criteria for root URL.
 
 **IMPORTANT**:
+ - The provided pages are ordered based on likelihood for being the correct root URL. If there are multiple potential candidates, you should choose the URL listed FIRST.
  - Reply **only** with JSON {"root_url": "<url_link>"}."""
         )
 
     def user(self) -> str:
-        parts = [f"# School: {self.school}\n\n", "## Candidate pages:"]
+        parts = [f"# School: {self.school}", "## Candidate pages:"]
         for i, p in enumerate(self.pages, 1):
             parts.append(f"### [{i}] {p['url']}\n{p['snippet']}")
         return "\n\n".join(parts)
