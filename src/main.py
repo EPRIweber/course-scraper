@@ -325,58 +325,59 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
 # Orchestration for a single school
 # -----------------------------------------------------------------------------
 async def run_scrape_pipeline(
-    school: str,
+    source: SourceConfig,
     run_id: int,
     storage: StorageBackend,
 ) -> None:
     """Generate config, upsert source, then run schema→crawl→scrape→classify."""
-    async def _log(source_id: str, st: Stage, msg: str):
-        logger.info(f"[{school}] {msg}")
-        await storage.log(run_id, source_id, int(st), msg)
-    try:
-        await storage.log(
-            run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Generating Source for {school}"
-        )
-        src_cfg, root_usage, schema_usage = await discover_source_config(school)
-        src_cfg: SourceConfig
-        await storage.log(
-            run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Source Generated for {school}"
-        )
-    except Exception as e:
-        await storage.log(
-            run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Config generation failed for {school}: {e}"
-        )
-        raise Exception(f"Config generation failed for {school}: {e}")
-    try:
-        real_id = await storage.ensure_source(src_cfg)
-        src_cfg.source_id = real_id
-    except Exception as e:
-        await storage.log(
-            run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Failed to upsert source {school}: {e}"
-        )
-        raise Exception(f"Failed to upsert source {school}: {e}")
+    async def _log(st: Stage, msg: str):
+        logger.info(f"[{source.name}] {msg}")
+        await storage.log(run_id, source.source_id, int(st), msg)
+    # try:
+    #     await storage.log(
+    #         run_id=run_id,
+    #         src_id=None,
+    #         stage=Stage.CRAWL,
+    #         msg=f"Generating Source for {school}"
+    #     )
+    #     src_cfg, root_usage, schema_usage = await discover_source_config(school)
+    #     src_cfg: SourceConfig
+    #     await storage.log(
+    #         run_id=run_id,
+    #         src_id=None,
+    #         stage=Stage.CRAWL,
+    #         msg=f"Source Generated for {school}"
+    #     )
+    # except Exception as e:
+    #     await storage.log(
+    #         run_id=run_id,
+    #         src_id=None,
+    #         stage=Stage.CRAWL,
+    #         msg=f"Config generation failed for {school}: {e}"
+    #     )
+    #     raise Exception(f"Config generation failed for {school}: {e}")
+    # try:
+    #     real_id = await storage.ensure_source(src_cfg)
+    #     src_cfg.source_id = real_id
+    # except Exception as e:
+    #     await storage.log(
+    #         run_id=run_id,
+    #         src_id=None,
+    #         stage=Stage.CRAWL,
+    #         msg=f"Failed to upsert source {school}: {e}"
+    #     )
+    #     raise Exception(f"Failed to upsert source {school}: {e}")
         
-    await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
-    await _log(real_id, Stage.STORAGE, f"Beginning pipeline for {school}")
-    
-    await process_schema(run_id, src_cfg, storage)
-    # await process_crawl(run_id, src_cfg, storage)
-    # await process_scrape(run_id, src_cfg, storage)
-    # await process_classify(run_id, src_cfg, storage)
-    # logger.info("Completed pipeline for %s", school)
-    await _log(real_id, Stage.STORAGE, f"Completed pipeline for {school}")
+    # await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
+    await _log(Stage.STORAGE, f"Beginning pipeline for {source.name}")
+    try:
+        await process_schema(run_id, source, storage)
+        await process_crawl(run_id, source, storage)
+        await process_scrape(run_id, source, storage)
+        await _log(Stage.STORAGE, f"Completed pipeline for {source.name}")
+    except Exception as exc:
+        await _log(Stage.CRAWL, f"FAILED: {exc}")
+        logger.exception(exc)
 
 async def main():
     storage = await get_storage_backend()
@@ -393,56 +394,48 @@ async def main():
 
     logger.info("Run ID: %d", run_id)
 
+    sources: list[SourceConfig] = await storage.list_sources
+
     MAX_CONCURRENT = 10
     sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
-    async def limited_run(school: str, run_id: int, storage: StorageBackend):
+    async def limited_run(source: SourceConfig, run_id: int, storage: StorageBackend):
         async with sem:
             await storage.log(
                 run_id=run_id,
                 src_id=None,
                 stage=Stage.CRAWL,
-                msg=(f"[{school}] starting (slots left: {sem._value})")
+                msg=(f"[{source}] starting (slots left: {sem._value})")
             )
-            return await run_scrape_pipeline(school, run_id, storage)
+            return await run_scrape_pipeline(source, run_id, storage)
 
     try:
-        new_schools = []
-        with open('configs/new_schools.csv', 'r') as f:
-            csv_reader = csv.reader(f)
-            for r in csv_reader:
-                new_schools.append(r[0])
+        tasks = [
+            limited_run(source, run_id, storage)
+            for source in sources
+        ]
 
-        try:
-            tasks = [
-                limited_run(school, run_id, storage)
-                for school in new_schools
-            ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for school, result in zip(new_schools, results):
-                if isinstance(result, Exception):
-                    logger.error(f"Pipeline for {school} FAILED: {result}")
-                    await storage.log(
-                        run_id=run_id,
-                        src_id=None,
-                        stage=Stage.CRAWL,
-                        msg=f"Pipeline for {school} FAILED: {result}"
-                    )
-                else:
-                    print(f"Task succeeded with result: {result}")
-
-        except Exception as exc:
-            await storage.log(
-                run_id=run_id,
-                src_id=None,
-                stage=Stage.CRAWL,
-                msg=f"Pipeline Fail: {exc}"
-            )
-            raise Exception(exc)
+        for source, result in zip(sources, results):
+            if isinstance(result, Exception):
+                logger.error(f"Pipeline for {source.name} FAILED: {result}")
+                await storage.log(
+                    run_id=run_id,
+                    src_id=None,
+                    stage=Stage.CRAWL,
+                    msg=f"Pipeline for {source.name} FAILED: {result}"
+                )
+            else:
+                print(f"Task succeeded with result: {result}")
 
     except Exception as exc:
-        logger.exception("Critical error in run %d: %s", run_id, exc)
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Pipeline Fail: {exc}"
+        )
+        raise Exception(exc)
 
     finally:
         await storage.end_run(run_id)               # unlock mutex
