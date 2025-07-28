@@ -13,6 +13,8 @@ import logging, logging.config
 import os
 from typing import Optional
 
+from pydantic import HttpUrl
+
 from src.config import SourceConfig, Stage, config, ValidationCheck
 from src.config_generator import discover_source_config
 from src.crawler import crawl_and_collect_urls
@@ -324,12 +326,12 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
 # -----------------------------------------------------------------------------
 # Orchestration for a single school
 # -----------------------------------------------------------------------------
-async def run_scrape_pipeline(
+async def enable_new_school(
     school: str,
     run_id: int,
     storage: StorageBackend,
-) -> None:
-    """Generate config, upsert source, then run schema→crawl→scrape→classify."""
+) -> SourceConfig | None:
+    """Generate config, upsert source, then run generate schema."""
     async def _log(source_id: str, st: Stage, msg: str):
         logger.info(f"[{school}] {msg}")
         await storage.log(run_id, source_id, int(st), msg)
@@ -369,14 +371,34 @@ async def run_scrape_pipeline(
         raise Exception(f"Failed to upsert source {school}: {e}")
         
     await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
-    await _log(real_id, Stage.STORAGE, f"Beginning pipeline for {school}")
+    await _log(real_id, Stage.SCHEMA, f"Beginning schema generation for {school}")
+    try:
+        await process_schema(run_id, src_cfg, storage)
+        await _log(real_id, Stage.SCHEMA, f"Completed schema generation for {school}")
+        return src_cfg
+    except Exception as e:
+        await _log(
+            run_id=run_id,
+            src_id=real_id,
+            stage=Stage.SCHEMA,
+            msg=f"Failed to generate schema for {school}: {e}"
+        )
+        raise Exception(f"Failed to generate schema for {school}: {e}")
     
-    await process_schema(run_id, src_cfg, storage)
-    # await process_crawl(run_id, src_cfg, storage)
-    # await process_scrape(run_id, src_cfg, storage)
-    # await process_classify(run_id, src_cfg, storage)
-    # logger.info("Completed pipeline for %s", school)
-    await _log(real_id, Stage.STORAGE, f"Completed pipeline for {school}")
+async def process_pipeline(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
+    async def _log(st: Stage, msg: str):
+        logger.info(f"[{source.name}] {msg}")
+        await storage.log(run_id, source.source_id, int(st), msg)
+
+    try:
+        await process_crawl(run_id, source, storage)
+        await process_scrape(run_id, source, storage)
+    except Exception as e:
+        await _log(
+            st=Stage.CRAWL,
+            msg=f"Pipeline Failure for {source.name}: {e}"
+        )
+        raise Exception(f"Failed to generate schema for {source.name}: {e}")
 
 async def main():
     storage = await get_storage_backend()
@@ -394,17 +416,22 @@ async def main():
     logger.info("Run ID: %d", run_id)
 
     MAX_CONCURRENT = 5
-    sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
-    async def limited_run(school: str, run_id: int, storage: StorageBackend):
-        async with sem:
-            await storage.log(
-                run_id=run_id,
-                src_id=None,
-                stage=Stage.CRAWL,
-                msg=(f"[{school}] starting (slots left: {sem._value})")
-            )
-            return await run_scrape_pipeline(school, run_id, storage)
 
+    # phase 1: config creation
+    creation_sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
+    async def creation_run(school: str, run_id: int, storage: StorageBackend):
+        async with creation_sem:
+            await storage.log(run_id, None, int(Stage.CRAWL), f"[{school}] creating source config (slots left: {creation_sem._value})")
+            return await enable_new_school(school, run_id, storage)
+
+    # phase 2: crawl + scrape
+    pipeline_sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
+    async def pipeline_run(cfg: SourceConfig):
+        async with pipeline_sem:
+            await storage.log(run_id, cfg.source_id, int(Stage.CRAWL), f"[{cfg.name}] starting crawl+scrape (slots left: {pipeline_sem._value})")
+            return await process_pipeline(run_id, cfg, storage)
+    
+    next_job: list[SourceConfig] = []
     try:
         new_schools = []
         with open('configs/new_schools.csv', 'r') as f:
@@ -414,7 +441,7 @@ async def main():
 
         try:
             tasks = [
-                limited_run(school, run_id, storage)
+                creation_run(school, run_id, storage)
                 for school in new_schools
             ]
 
@@ -429,8 +456,9 @@ async def main():
                         stage=Stage.CRAWL,
                         msg=f"Pipeline for {school} FAILED: {result}"
                     )
-                else:
+                elif isinstance(result, SourceConfig):
                     print(f"Task succeeded with result: {result}")
+                    next_job.append(result)
 
         except Exception as exc:
             await storage.log(
@@ -440,6 +468,16 @@ async def main():
                 msg=f"Pipeline Fail: {exc}"
             )
             raise Exception(exc)
+        
+        if next_job:
+            pipeline_tasks = [pipeline_run(cfg) for cfg in next_job]
+            pipeline_results = await asyncio.gather(*pipeline_tasks, return_exceptions=True)
+            for cfg, res in zip(next_job, pipeline_results):
+                if isinstance(res, Exception):
+                    logger.error(f"[{cfg.name}] pipeline failed: {res}")
+                    await storage.log(run_id, cfg.source_id, int(Stage.CRAWL), f"[{cfg.name}] pipeline failed: {res}")
+                else:
+                    logger.info(f"[{cfg.name}] pipeline completed successfully")
 
     except Exception as exc:
         logger.exception("Critical error in run %d: %s", run_id, exc)
@@ -450,23 +488,40 @@ async def main():
         await close_playwright()
 
 async def testing():
-    # test_source = config.sources[0]
-    # print(f"generating test schema for {test_source.name}")
-    # schema = None
-    # print(schema)
-    # check: ValidationCheck = await validate_schema(
-    #     schema=schema,
-    #     source=test_source
+
+    # src_cfg, root_usage, schema_usage = await discover_source_config("oregon state university")
+
+    src_cfg=SourceConfig(
+        source_id='LOCAL_oregon state university',
+        name='oregon state university',
+        type='html',
+        root_url=HttpUrl('https://catalog.oregonstate.edu/courses/'),
+        schema_url=HttpUrl('https://catalog.oregonstate.edu/courses/aec/'),
+        include_external=False,
+        crawl_depth=100,
+        page_timeout_s=120,
+        max_concurrency=1,
+        url_base_exclude='',
+        url_exclude_patterns=None,
+        max_links_per_page=None
+    )
+
+    # schema, usage = await generate_schema(
+    #     src_cfg
     # )
+    schema={'name': 'Course Blocks', 'baseSelector': '.courseblock', 'fields': [{'name': 'course_title', 'selector': 'h2.courseblocktitle', 'type': 'text'}, {'name': 'course_description', 'selector': 'p.courseblockdesc', 'type': 'text'}, {'name': 'course_code', 'selector': 'h2.courseblocktitle strong', 'type': 'text', 'pattern': '([A-Z]{3}\\s\\d{3})', 'transform': 'trim'}, {'name': 'course_credits', 'selector': 'h2.courseblocktitle', 'type': 'text', 'pattern': '(\\d+ Credits?)', 'transform': 'trim'}]}
 
-
-    # urls = await crawl_and_collect_urls(test_source)
-    # print(urls)
-
-    src_cfg, root_usage, schema_usage = await discover_source_config("oregon state university")
+    check: ValidationCheck = await validate_schema(
+        schema=schema,
+        source=src_cfg
+    )
 
     print(
-f"""Source Config:\n{src_cfg}"""
+f"""Source Config:\n{src_cfg}
+
+Schema:\n{schema}
+
+Validation:\n{check}"""
     )
 
 if __name__ == "__main__":
