@@ -55,18 +55,12 @@ console and the `logs` table in the database.
 
 Use the provided modules as a reference when adding new sources or extending the pipeline.
 
-## Automatic Config Generation
+## Automatic Config Generation (STILL IN DEVELOPMENT)
 
 The `config_generator.py` script can automatically create minimal entries in
 `configs/sources.yaml` for new schools. It performs a Google Programmable Search
 Engine query for the school's course catalog, scans candidate pages for course
 links and then appends a new `SourceConfig` section.
-
-Generate a single config:
-
-```bash
-python src/config_generator.py
-```
 
 Or generate configs for many schools from a CSV file:
 
