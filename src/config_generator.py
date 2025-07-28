@@ -110,7 +110,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     all_urls = await crawl_and_collect_urls(
         temp,
         make_root_filter=False,
-        max_links_per_page=5
+        max_links_per_page=10
     )
     seen = set(); unique = []
     for u in all_urls:
