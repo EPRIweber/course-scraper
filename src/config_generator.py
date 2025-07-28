@@ -93,7 +93,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         # only keep “catalog”‑y ones
         catalogs = filter_catalog_urls(sub_urls)
         # build a small list you’ll actually fetch snippets for:
-        to_fetch = [hit] + catalogs[:20]   # 1 + up to 9 = 10 pages/site
+        to_fetch = [hit] + catalogs[:5]   # 1 + up to 9 = 10 pages/site
 
         # fetch and append
         pages += await fetch_snippets(to_fetch)
@@ -141,14 +141,22 @@ def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
         page_timeout=timeout_s * 1000,
     )
 
-async def fetch_snippets(urls: List[str]) -> List[dict]:
+async def fetch_snippets(
+        urls: List[str],
+        return_html: Optional[bool] = False
+    ) -> List[dict]:
     """Fetch each URL via Playwright+HTTPX fallback and hand back raw HTML."""
     pages = []
     for url in urls:
         try:
             html = await fetch_page(url)
-            markdown_page = get_content_of_website_optimized(url, html)
-            pages.append({"url": url, "snippet": markdown_page})
+            if return_html:
+                pruner = PruningContentFilter(threshold=0.3)
+                chunks = pruner.filter_content(html)
+                snippet = "\n".join(chunks)
+            else:
+                snippet = get_content_of_website_optimized(url, html)
+            pages.append({"url": url, "snippet": snippet})
             await asyncio.sleep(0.2)
         except Exception as e:
             logger.debug("Failed to fetch %s for snippet: %s", url, e)
