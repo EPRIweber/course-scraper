@@ -70,16 +70,17 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     
     total = []
     for r in results:
+        temp = SourceConfig(
+            source_id=f"TEMP_{school}",
+            name=school,
+            root_url=r,
+            schema_url=r,
+            crawl_depth=2
+        )
         total += await crawl_and_collect_urls(
-            SourceConfig(
-                source_id=f"TEMP_{school}",
-                name=school,
-                root_url=r,
-                schema_url=r,
-                crawl_depth=2,
-                max_links_per_page=5
-            ),
-            make_root_filter=False
+            temp,
+            make_root_filter=False,
+            max_links_per_page=10
         )
     
     candidates = filter_catalog_urls(total)
@@ -110,7 +111,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
     all_urls = await crawl_and_collect_urls(
         temp,
         make_root_filter=False,
-        max_links_per_page=10
+        max_links_per_page=50
     )
     seen = set(); unique = []
     for u in all_urls:
@@ -155,7 +156,7 @@ async def google_search(query: str, *, count: int = 4) -> List[str]:
         )
     
     query = query.replace("TESTING", "")
-    
+
     async with _GOOGLE_SEARCH_SEM:
         params = {"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": query, "num": count}
         async with httpx.AsyncClient(timeout=60000 * 10, verify=False) as client:

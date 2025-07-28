@@ -7,7 +7,7 @@ limits and optional exclusion patterns.
 """
 
 import asyncio
-from collections import deque
+from collections import defaultdict, deque
 import re
 from typing import Optional, Set
 from urllib.parse import urljoin, urlparse
@@ -73,11 +73,15 @@ warnings.filterwarnings(
 
 import random
 
+def section_key(url: str) -> str:
+    """Group URLs by everything except their last path segment."""
+    path = urlparse(url).path.rstrip("/")
+    if "/" in path:
+        return path.rsplit("/", 1)[0]
+    return path
+
 def reservoir_sample(iterable, k: int):
-    """
-    Pick k items uniformly at random from iterable (which may be arbitrarily long)
-    using reservoir sampling.
-    """
+    """Classic reservoir sampling."""
     reservoir = []
     for i, item in enumerate(iterable):
         if i < k:
@@ -87,6 +91,36 @@ def reservoir_sample(iterable, k: int):
             if j < k:
                 reservoir[j] = item
     return reservoir
+
+class DynamicSampler:
+    def __init__(self, total_budget: int):
+        self.K = total_budget
+        # per-stratum reservoirs
+        self.reservoirs: dict[str, list[str]] = defaultdict(list)
+
+    def add_candidates(self, candidates: list[str]):
+        # 1) Bucket them by section
+        buckets: dict[str,list[str]] = defaultdict(list)
+        for url in candidates:
+            buckets[section_key(url)].append(url)
+
+        # 2) If we discover new strata, adjust quotas
+        S = len(buckets)
+        quota = self.K // S if S > 0 else 0
+
+        # 3) For each bucket, run reservoir sampling up to the current quota
+        new_reservoirs: dict[str, list[str]] = {}
+        for key, urls in buckets.items():
+            # combine with any previously accepted samples?
+            # here we just resample from scratch each page visit
+            new_reservoirs[key] = reservoir_sample(urls, quota)
+
+        # 4) Replace old reservoirs
+        self.reservoirs = new_reservoirs
+
+    def get_sample(self) -> list[str]:
+        # flatten
+        return [u for bucket in self.reservoirs.values() for u in bucket]
 
 async def _static_bfs_crawl(
     root_url: str,
@@ -223,7 +257,9 @@ async def _static_bfs_crawl(
                         candidates.append(full)
                         # queue.append((full, depth + 1))
                 if max_links_per_page is not None:
-                    to_visit = reservoir_sample(candidates, max_links_per_page)
+                    sampler = DynamicSampler(total_budget=max_links_per_page)
+                    sampler.add_candidates(candidates)
+                    to_visit = sampler.get_sample()
                 else:
                     to_visit = candidates
 
