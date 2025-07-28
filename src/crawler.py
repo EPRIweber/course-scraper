@@ -38,7 +38,11 @@ _crawler: AsyncWebCrawler | None = None
 # public entrypoint
 # ———————————————————————————————————————————————————————————————
 
-async def crawl_and_collect_urls(source: SourceConfig, make_root_filter: bool = True) -> list[str]:
+async def crawl_and_collect_urls(
+        source: SourceConfig,
+        make_root_filter: bool = True,
+        max_links_per_page: int = None
+    ) -> list[str]:
     logger.debug(f"""Running crawl with:
   max_crawl_depth:{source.crawl_depth}
   include_external:{source.include_external}
@@ -52,7 +56,8 @@ async def crawl_and_collect_urls(source: SourceConfig, make_root_filter: bool = 
         exclude_patterns=source.url_exclude_patterns,
         base_exclude=source.url_base_exclude,
         timeout=source.page_timeout_s,
-        make_root_filter=make_root_filter
+        make_root_filter=make_root_filter,
+        max_links_per_page=max_links_per_page
     )
     return sorted(urls)
 
@@ -66,6 +71,23 @@ warnings.filterwarnings(
     category=urllib3.exceptions.InsecureRequestWarning
 )
 
+import random
+
+def reservoir_sample(iterable, k: int):
+    """
+    Pick k items uniformly at random from iterable (which may be arbitrarily long)
+    using reservoir sampling.
+    """
+    reservoir = []
+    for i, item in enumerate(iterable):
+        if i < k:
+            reservoir.append(item)
+        else:
+            j = random.randint(0, i)
+            if j < k:
+                reservoir[j] = item
+    return reservoir
+
 async def _static_bfs_crawl(
     root_url: str,
     max_crawl_depth: int,
@@ -74,7 +96,8 @@ async def _static_bfs_crawl(
     exclude_patterns: list[str],
     base_exclude: str | None,
     timeout: int,
-    make_root_filter
+    make_root_filter,
+    max_links_per_page: int
 ) -> Set[str]:
     start = urlparse(base_exclude or root_url)
     print(">>> parsing:", base_exclude or root_url)
@@ -184,6 +207,7 @@ async def _static_bfs_crawl(
 
                 base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
                 soup = BeautifulSoup(html, "lxml")
+                candidates = []
                 for a in soup.find_all("a", href=True):
                     href = a["href"].split("#", 1)[0]
                     if not href or href.startswith(("mailto:", "tel:")):
@@ -196,7 +220,15 @@ async def _static_bfs_crawl(
                         continue
 
                     if full not in seen:
-                        queue.append((full, depth + 1))
+                        candidates.append(full)
+                        # queue.append((full, depth + 1))
+                if max_links_per_page is not None:
+                    to_visit = reservoir_sample(candidates, max_links_per_page)
+                else:
+                    to_visit = candidates
+
+                for link in to_visit:
+                    queue.append((link, depth + 1))
 
     return seen
 

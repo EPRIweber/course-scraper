@@ -76,7 +76,8 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
                 name=school,
                 root_url=r,
                 schema_url=r,
-                crawl_depth=1
+                crawl_depth=2,
+                max_links_per_page=5
             ),
             make_root_filter=False
         )
@@ -106,7 +107,11 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         url_base_exclude=shared_domain,
         crawl_depth=3
     )
-    all_urls = await crawl_and_collect_urls(temp, make_root_filter=False)
+    all_urls = await crawl_and_collect_urls(
+        temp,
+        make_root_filter=False,
+        max_links_per_page=5
+    )
     seen = set(); unique = []
     for u in all_urls:
         if u not in seen:
