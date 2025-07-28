@@ -23,6 +23,7 @@ class SourceConfig(BaseModel):
     max_concurrency: Optional[int] = 1
     url_base_exclude: Optional[str] = None
     url_exclude_patterns: Optional[list[str]] = None
+    max_links_per_page: Optional[int] = None
 
     class Config:
         extra = 'forbid'

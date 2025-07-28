@@ -9,7 +9,7 @@ limits and optional exclusion patterns.
 import asyncio
 from collections import deque
 import re
-from typing import Set
+from typing import Optional, Set
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 import logging
@@ -41,7 +41,7 @@ _crawler: AsyncWebCrawler | None = None
 async def crawl_and_collect_urls(
         source: SourceConfig,
         make_root_filter: bool = True,
-        max_links_per_page: int = None
+        max_links_per_page: int | None = None
     ) -> list[str]:
     logger.debug(f"""Running crawl with:
   max_crawl_depth:{source.crawl_depth}
