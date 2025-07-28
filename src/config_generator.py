@@ -109,7 +109,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         name=school,
         root_url=root_url,
         schema_url=root_url,
-        url_base_exclude=shared_domain,
+        # url_base_exclude=shared_domain,
         crawl_depth=3
     )
     all_urls = await crawl_and_collect_urls(
