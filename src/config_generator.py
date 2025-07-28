@@ -153,6 +153,9 @@ async def google_search(query: str, *, count: int = 4) -> List[str]:
         raise RuntimeError(
             "GOOGLE_API_KEY and GOOGLE_CX environment variables are required"
         )
+    
+    query = query.replace("TESTING", "")
+    
     async with _GOOGLE_SEARCH_SEM:
         params = {"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": query, "num": count}
         async with httpx.AsyncClient(timeout=60000 * 10, verify=False) as client:
