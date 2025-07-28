@@ -96,7 +96,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         to_fetch = [hit] + catalogs[:5]   # 1 + up to 9 = 10 pages/site
 
         # fetch and append
-        pages += await fetch_snippets(to_fetch)
+        pages += await fetch_snippets(to_fetch, return_html=True)
     
 
     root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
