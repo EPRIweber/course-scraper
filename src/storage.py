@@ -28,6 +28,8 @@ class StorageBackend(ABC):
     @abstractmethod
     async def list_sources(self) -> list[SourceConfig]: ...
     @abstractmethod
+    async def list_distinct(self) -> list[tuple[str,str,str,str,str]]: ...
+    @abstractmethod
     async def ensure_source(self, src_cfg: SourceConfig) -> str: ...
 
     @abstractmethod
@@ -156,7 +158,19 @@ class SqlServerStorage(StorageBackend):
             )
             for r in rows
         ]
-
+    
+    async def list_distinct(self) -> list[tuple[str,str,str,str,str]]:
+        
+        # Query for all taxonomy assignments where the course belongs to this source
+        sql = """
+            SELECT ds.cleaned_name AS 'distinct_name', ds.uni_host AS 'ipeds_host', ds.src_host AS 'scraper_host', s.cleaned_name AS 'source_name', s.source_base_url AS 'scraper_root_url'
+            FROM stg_join_data_sources AS ds
+            JOIN sources AS s
+            ON ds.source_id = s.source_id"""
+        rows = await self._fetch(sql)
+        if not rows:
+            return []
+        return rows or []
 
     async def log(self, run_id: int, src_id: str, stage: int, msg: str):
         """Insert a log message for a run and source."""

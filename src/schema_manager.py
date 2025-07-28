@@ -40,7 +40,6 @@ async def generate_schema(
     log.info(f"Generated schema for {source.name!r}:\n{schema}")
     return schema, usage
 
-
 # Suppress “InsecureRequestWarning” across this module
 warnings.filterwarnings(
     "ignore",
@@ -91,7 +90,6 @@ warnings.filterwarnings(
 #         + "\n</div>"
 #     )
 
-
 async def _generate_schema_from_llm(
     url: HttpUrl,
     page_timout: int,
@@ -106,7 +104,7 @@ async def _generate_schema_from_llm(
         raise RuntimeError(f"Failed to load schema_url {url}: {e}")
 
     # print(catalog_html)
-    
+
     if "Modern Campus Catalog" in catalog_html:
         # raw_html = await _fetch_and_expand(str(url), catalog_html)
         with open("src/modern_campus.json", 'r') as f:
@@ -115,7 +113,7 @@ async def _generate_schema_from_llm(
         raw_html = catalog_html
     soup = BeautifulSoup(raw_html, "lxml")
     html_snippet = soup.encode_contents().decode()
-    
+
     # 2) Prune until snippet is reasonably small (or threshold too high)
     prune_threshold = 0.0
     html_for_schema = html_snippet
@@ -132,7 +130,7 @@ async def _generate_schema_from_llm(
         "Generating schema with %d characters (prune_threshold=%.1f) from %s",
         len(html_for_schema), prune_threshold, url
     )
-    
+
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
         repeating_block="course_block",
@@ -192,7 +190,6 @@ async def _generate_schema_from_llm(
         else:
             raise ValueError("LLM returned an array; expected a single schema object")
 
-    
     prompt_t = response.get("usage", {}).get("prompt_tokens")
     completion_t = response.get("usage", {}).get("completion_tokens")
 
@@ -204,7 +201,7 @@ async def _generate_schema_from_llm(
 async def validate_schema(
     schema: dict,
     source: SourceConfig
-) -> ValidationCheck:
+) -> tuple[ValidationCheck, str]:
     """
     Quickly sanity-check a freshly-generated schema against
     ``source.schema_url``.
@@ -226,8 +223,9 @@ async def validate_schema(
     # if schema == modern_campus_schema:
     #     log.info("Skipping modern campus schema")
     #     return ValidationCheck(False, [], [])
-    
+
     at_least_one_good = False
+    output = None
 
     try:
         # Scrape just the schema_url page
@@ -239,6 +237,7 @@ async def validate_schema(
         
         if records:
             log.info("Sample record for schema validation:\n%s", json.dumps(records[0], indent=2))
+            output = "Sample record from schema validation:\n%s", json.dumps(records[0], indent=4)
             print("Sample record for schema validation:\n%s", json.dumps(records[0], indent=4))
         else:
             log.warning(f"No records returned for {source.name}")
@@ -257,14 +256,14 @@ async def validate_schema(
                 good_rec = True
                 if isinstance(rec, dict):
                     for field in required_fields:
-                        if field not in rec or not rec.get(field):
+                        if field not in rec or not rec.get(field) or not len(rec.get(field)) > 0:
                             good_rec = False
                 if good_rec:
                     at_least_one_good = True
 
-            for field in required_fields:
-                if not any(isinstance(rec, dict) and field in rec and rec.get(field) for rec in records):
-                    fields_missing.append(field)
+            # for field in required_fields:
+            #     if not any(isinstance(rec, dict) and field in rec and rec.get(field) for rec in records):
+            #         fields_missing.append(field)
 
     except Exception as exc:
         log.exception("Schema validation failed")
@@ -275,4 +274,4 @@ async def validate_schema(
         valid=valid,
         fields_missing=fields_missing,
         errors=errors
-    )
+    ), output

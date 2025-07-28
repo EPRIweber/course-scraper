@@ -1,5 +1,3 @@
-# src/pipeline.py
-
 """Simple scraping pipeline orchestration with fallback hooks.
 
 This module defines an orchestration function `run_scrape_pipeline` that
@@ -16,22 +14,18 @@ import logging
 import os
 from typing import List, Dict, Tuple
 
-from .config import SourceConfig
+from .config import SourceConfig, Stage
 from .crawler import crawl_and_collect_urls
-from .prefilter import prefilter_urls
-from .schema_manager import validate_schema
+# from .prefilter import prefilter_urls
+from .config_generator import generate_config
+from .schema_manager import validate_schema, generate_schema
 from .scraper import scrape_urls
-from .classify_manager import classify_courses
+# from .classify_manager import classify_courses
 from .storage import SqlServerStorage, StorageBackend
 
 # The real implementations of these helpers are expected to exist elsewhere in
 # the code base.  Local stubs keep this module importable until those modules
 # are available.
-async def discover_catalog_root(school: str) -> str:  # pragma: no cover - stub
-    raise NotImplementedError
-
-async def discover_schema_url(root_url: str, candidates: List[str]) -> str:  # pragma: no cover - stub
-    raise NotImplementedError
 
 logger = logging.getLogger(__name__)
 
@@ -92,32 +86,30 @@ async def _save_data_fallback(source_id: str, records: List[Dict]) -> None:
 # orchestration
 # ---------------------------------------------------------------------------
 
-async def _get_storage() -> StorageBackend | None:
-    """Create the default storage backend."""
-    try:
-        conn_str = (
-            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-            f"SERVER={os.getenv('DB_SERVER')};"
-            f"DATABASE={os.getenv('DB_NAME')};"
-            f"UID={os.getenv('DB_USER')};"
-            f"PWD={os.getenv('DB_PASS')};"
-            "TrustServerCertificate=yes;"
-            "Encrypt=yes;"
-            "MARS_Connection=Yes;"
-        )
-        logger.info("Using SQL-Server storage backend")
-        return SqlServerStorage(conn_str)
-    except Exception as exc:
-        logger.exception("Storage backend creation failed: %s", exc)
-        return None
+async def run_scrape_pipeline(
+    school: str,
+    run_id: int,
+    storage: StorageBackend,
+) -> None:
+    """Run the scraping pipeline for ``school`` using provided ``storage``.
 
+    Parameters
+    ----------
+    school:
+        Human-readable name of the school to scrape.
+    run_id:
+        Current pipeline run identifier for logging.
+    storage:
+        Active storage backend shared by the application.
+    """
 
-async def run_scrape_pipeline(school: str) -> None:
-    """Run the scraping pipeline for ``school`` with basic fallbacks."""
-    storage = await _get_storage()
-    if storage is None:
-        logger.error("No storage backend available; aborting pipeline")
-        return
+    source_id = f"{school}"
+    await storage.log(
+        run_id,
+        source_id,
+        int(Stage.CRAWL),
+        f"Pipeline start for {school}",
+    )
 
     existing = await storage.list_sources()
     if any(src.name.lower() == school.lower() for src in existing):
@@ -131,7 +123,7 @@ async def run_scrape_pipeline(school: str) -> None:
         root_url = await _discover_catalog_root_fallback(school)
 
     source = SourceConfig(
-        source_id=f"TEMP_{school}",
+        source_id=source_id,
         name=school,
         root_url=root_url,
         schema_url=root_url,
@@ -143,11 +135,11 @@ async def run_scrape_pipeline(school: str) -> None:
         logger.exception("crawl_and_collect_urls failed: %s", exc)
         urls = await _crawl_and_collect_urls_fallback(source)
 
-    try:
-        urls = await prefilter_urls(urls, source)
-    except Exception as exc:  # noqa: F841
-        logger.exception("prefilter_urls failed: %s", exc)
-        urls = await _prefilter_urls_fallback(urls, source)
+    # try:
+    #     urls = await prefilter_urls(urls, source)
+    # except Exception as exc:  # noqa: F841
+    #     logger.exception("prefilter_urls failed: %s", exc)
+    #     urls = await _prefilter_urls_fallback(urls, source)
 
     try:
         schema_url = await discover_schema_url(root_url, urls)  # type: ignore
@@ -175,12 +167,12 @@ async def run_scrape_pipeline(school: str) -> None:
         (str(idx), rec.get("course_title", ""), rec.get("course_description", ""))
         for idx, rec in enumerate(records)
     ]
-    try:
-        classified, _ = await classify_courses(courses)
-    except Exception as exc:  # noqa: F841
-        logger.exception("classify_courses failed: %s", exc)
-        classified = await _classify_courses_fallback(courses)
-    logger.debug("Classified %d courses", len(classified))
+    # try:
+    #     classified, _ = await classify_courses(courses)
+    # except Exception as exc:  # noqa: F841
+    #     logger.exception("classify_courses failed: %s", exc)
+    #     classified = await _classify_courses_fallback(courses)
+    # logger.debug("Classified %d courses", len(classified))
 
     try:
         await storage.save_data(source.source_id, records)
@@ -188,4 +180,11 @@ async def run_scrape_pipeline(school: str) -> None:
         logger.exception("save_data failed: %s", exc)
         await _save_data_fallback(source.source_id, records)
 
+    await storage.log(
+        run_id,
+        source_id,
+        int(Stage.STORAGE),
+        f"Pipeline complete for {school}",
+    )
     logger.info("Pipeline for %s completed", school)
+

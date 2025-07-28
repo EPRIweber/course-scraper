@@ -18,11 +18,12 @@ class SourceConfig(BaseModel):
     root_url: HttpUrl
     schema_url: HttpUrl
     include_external: Optional[bool] = False
-    crawl_depth: Optional[int] = 3
+    crawl_depth: Optional[int] = 100
     page_timeout_s: Optional[int] = 60
     max_concurrency: Optional[int] = 1
     url_base_exclude: Optional[str] = None
     url_exclude_patterns: Optional[list[str]] = None
+    max_links_per_page: Optional[int] = None
 
     class Config:
         extra = 'forbid'

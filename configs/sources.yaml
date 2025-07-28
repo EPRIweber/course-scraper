@@ -1,11 +1,12 @@
 sources:
 
-# - name: brown_university
-#   root_url: https://bulletin.brown.edu/
-#   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
-#   type: html
-#   max_concurrency: 1
-#   url_exclude_patterns: ["search", "azindex"]
+- name: brown_university
+  root_url: https://bulletin.brown.edu/
+  schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
+  type: html
+  max_concurrency: 1
+  url_exclude_patterns: ["search", "azindex"]
+  crawl_depth: 1
 
 # - name: massachusetts_institute_of_technology
 #   root_url: https://catalog.mit.edu/

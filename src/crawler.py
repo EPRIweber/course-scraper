@@ -7,9 +7,9 @@ limits and optional exclusion patterns.
 """
 
 import asyncio
-from collections import deque
+from collections import defaultdict, deque
 import re
-from typing import Set
+from typing import Optional, Set
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 import logging
@@ -38,7 +38,11 @@ _crawler: AsyncWebCrawler | None = None
 # public entrypoint
 # ———————————————————————————————————————————————————————————————
 
-async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
+async def crawl_and_collect_urls(
+        source: SourceConfig,
+        make_root_filter: bool = True,
+        max_links_per_page: int | None = None
+    ) -> list[str]:
     logger.debug(f"""Running crawl with:
   max_crawl_depth:{source.crawl_depth}
   include_external:{source.include_external}
@@ -51,7 +55,9 @@ async def crawl_and_collect_urls(source: SourceConfig) -> list[str]:
         concurrency=source.max_concurrency,
         exclude_patterns=source.url_exclude_patterns,
         base_exclude=source.url_base_exclude,
-        timeout=source.page_timeout_s
+        timeout=source.page_timeout_s,
+        make_root_filter=make_root_filter,
+        max_links_per_page=max_links_per_page
     )
     return sorted(urls)
 
@@ -65,6 +71,57 @@ warnings.filterwarnings(
     category=urllib3.exceptions.InsecureRequestWarning
 )
 
+import random
+
+def section_key(url: str) -> str:
+    """Group URLs by everything except their last path segment."""
+    path = urlparse(url).path.rstrip("/")
+    if "/" in path:
+        return path.rsplit("/", 1)[0]
+    return path
+
+def reservoir_sample(iterable, k: int):
+    """Classic reservoir sampling."""
+    reservoir = []
+    for i, item in enumerate(iterable):
+        if i < k:
+            reservoir.append(item)
+        else:
+            j = random.randint(0, i)
+            if j < k:
+                reservoir[j] = item
+    return reservoir
+
+class DynamicSampler:
+    def __init__(self, total_budget: int):
+        self.K = total_budget
+        # per-stratum reservoirs
+        self.reservoirs: dict[str, list[str]] = defaultdict(list)
+
+    def add_candidates(self, candidates: list[str]):
+        # 1) Bucket them by section
+        buckets: dict[str,list[str]] = defaultdict(list)
+        for url in candidates:
+            buckets[section_key(url)].append(url)
+
+        # 2) If we discover new strata, adjust quotas
+        S = len(buckets)
+        quota = self.K // S if S > 0 else 0
+
+        # 3) For each bucket, run reservoir sampling up to the current quota
+        new_reservoirs: dict[str, list[str]] = {}
+        for key, urls in buckets.items():
+            # combine with any previously accepted samples?
+            # here we just resample from scratch each page visit
+            new_reservoirs[key] = reservoir_sample(urls, quota)
+
+        # 4) Replace old reservoirs
+        self.reservoirs = new_reservoirs
+
+    def get_sample(self) -> list[str]:
+        # flatten
+        return [u for bucket in self.reservoirs.values() for u in bucket]
+
 async def _static_bfs_crawl(
     root_url: str,
     max_crawl_depth: int,
@@ -72,7 +129,9 @@ async def _static_bfs_crawl(
     concurrency: int,
     exclude_patterns: list[str],
     base_exclude: str | None,
-    timeout: int
+    timeout: int,
+    make_root_filter,
+    max_links_per_page: int
 ) -> Set[str]:
     start = urlparse(base_exclude or root_url)
     print(">>> parsing:", base_exclude or root_url)
@@ -91,7 +150,7 @@ async def _static_bfs_crawl(
 
     def _inside_start_path(u: str) -> bool:
         p = urlparse(u)
-        return p.netloc == domain and p.path.startswith(root_path)
+        return p.netloc == domain and (p.path.startswith(root_path) if make_root_filter else True)
 
     class ExcludePatternFilter:
         def __init__(self, patterns):
@@ -182,6 +241,7 @@ async def _static_bfs_crawl(
 
                 base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
                 soup = BeautifulSoup(html, "lxml")
+                candidates = []
                 for a in soup.find_all("a", href=True):
                     href = a["href"].split("#", 1)[0]
                     if not href or href.startswith(("mailto:", "tel:")):
@@ -194,7 +254,17 @@ async def _static_bfs_crawl(
                         continue
 
                     if full not in seen:
-                        queue.append((full, depth + 1))
+                        candidates.append(full)
+                        # queue.append((full, depth + 1))
+                if max_links_per_page is not None:
+                    sampler = DynamicSampler(total_budget=max_links_per_page)
+                    sampler.add_candidates(candidates)
+                    to_visit = sampler.get_sample()
+                else:
+                    to_visit = candidates
+
+                for link in to_visit:
+                    queue.append((link, depth + 1))
 
     return seen
 
