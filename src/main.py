@@ -393,7 +393,7 @@ async def main():
 
     logger.info("Run ID: %d", run_id)
 
-    MAX_CONCURRENT = 10
+    MAX_CONCURRENT = 5
     sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
     async def limited_run(school: str, run_id: int, storage: StorageBackend):
         async with sem:
