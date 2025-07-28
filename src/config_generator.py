@@ -124,7 +124,7 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         if u not in seen:
             seen.add(u); unique.append(u)
 
-    schema_pages = await fetch_snippets(unique[:min(100, len(unique))])
+    schema_pages = await fetch_snippets(unique[:min(120, len(unique))])
     schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
     if not schema_url:
         raise Exception(f"No schema URL returned for {school}")
