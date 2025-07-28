@@ -51,7 +51,6 @@ async def discover_source_config(name: str) -> tuple[SourceConfig, int, int]:
         if not ps.path.startswith(root_path):
             url_base_exclude = shared_domain
 
-
     return SourceConfig(
         source_id=f"LOCAL_{name}",
         name=name,
@@ -161,7 +160,7 @@ def filter_catalog_urls(urls: List[str]) -> List[str]:
     filtered = []
     for url in urls:
         lower = url.lower()
-        if any(k in lower for k in KEYWORDS) and ".edu" in lower:
+        if any(k in lower for k in KEYWORDS) and ".edu" in lower and ('pdf' not in lower):
             filtered.append(url)
     return filtered
 

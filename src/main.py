@@ -372,8 +372,8 @@ async def run_scrape_pipeline(
     await _log(real_id, Stage.STORAGE, f"Beginning pipeline for {school}")
     
     await process_schema(run_id, src_cfg, storage)
-    await process_crawl(run_id, src_cfg, storage)
-    await process_scrape(run_id, src_cfg, storage)
+    # await process_crawl(run_id, src_cfg, storage)
+    # await process_scrape(run_id, src_cfg, storage)
     # await process_classify(run_id, src_cfg, storage)
     # logger.info("Completed pipeline for %s", school)
     await _log(real_id, Stage.STORAGE, f"Completed pipeline for {school}")
@@ -470,5 +470,5 @@ f"""Source Config:\n{src_cfg}"""
     )
 
 if __name__ == "__main__":
-    # asyncio.run(main())
-    asyncio.run(testing())
+    asyncio.run(main())
+    # asyncio.run(testing())
