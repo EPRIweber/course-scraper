@@ -164,12 +164,12 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 22
 
-# - name: adams_state_university
-#   root_url: https://adams.catalog.acalog.com/content.php?catoid=79&navoid=5036
-#   schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=79&coid=172876
-#   url_base_exclude: https://adams.catalog.acalog.com
-#   max_concurrency: 1
-#   crawl_depth: 17
+- name: adams_state_university
+  root_url: https://adams.catalog.acalog.com/content.php?catoid=79&navoid=5036
+  schema_url: https://adams.catalog.acalog.com/preview_course_nopop.php?catoid=79&coid=172876
+  url_base_exclude: https://adams.catalog.acalog.com
+  max_concurrency: 1
+  crawl_depth: 17
 
 
 
