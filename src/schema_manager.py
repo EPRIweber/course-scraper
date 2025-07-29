@@ -234,11 +234,13 @@ async def validate_schema(
             schema=schema,
             source=source
         )
+
+        sample = json.dumps(records[0], indent=2)
+        text = f"Sample record from schema validation:\n{sample}", 
         
         if records:
-            log.info("Sample record for schema validation:\n%s", json.dumps(records[0], indent=2))
-            output = "Sample record from schema validation:\n%s", json.dumps(records[0], indent=4)
-            print("Sample record for schema validation:\n%s", json.dumps(records[0], indent=4))
+            output = text
+            print(text)
         else:
             log.warning(f"No records returned for {source.name}")
 
@@ -273,5 +275,6 @@ async def validate_schema(
     return ValidationCheck(
         valid=valid,
         fields_missing=fields_missing,
-        errors=errors
-    ), output
+        errors=errors,
+        sample=output
+    )

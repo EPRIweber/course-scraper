@@ -88,12 +88,12 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         if (not schema) or (not schema.get("baseSelector")):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
-            check, output = await validate_schema(
+            check: ValidationCheck = await validate_schema(
                 schema=schema,
                 source=source
             )
             check: ValidationCheck
-            await _log(stage, output)
+            await _log(stage, check.sample)
             if check.valid:
                 await _log(stage, "successfully validated generated schema")
                 await storage.save_schema(source.source_id, schema)

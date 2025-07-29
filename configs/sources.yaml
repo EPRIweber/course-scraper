@@ -1,12 +1,19 @@
 sources:
 
-- name: brown_university
-  root_url: https://bulletin.brown.edu/
-  schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
-  type: html
+- name: north_carolina_state_university
+  root_url: https://catalog.ncsu.edu/course-descriptions/
+  schema_url: https://catalog.ncsu.edu/course-descriptions/csc/
+  url_base_exclude: 
   max_concurrency: 1
-  url_exclude_patterns: ["search", "azindex"]
-  crawl_depth: 1
+  crawl_depth: 4
+
+# - name: brown_university
+#   root_url: https://bulletin.brown.edu/
+#   schema_url: https://bulletin.brown.edu/biologyandmedicine/biology-undergraduate/#courseinventory
+#   type: html
+#   max_concurrency: 1
+#   url_exclude_patterns: ["search", "azindex"]
+#   crawl_depth: 1
 
 # - name: massachusetts_institute_of_technology
 #   root_url: https://catalog.mit.edu/
@@ -308,12 +315,12 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 3
 
-- name: cal_state_la
-  root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
-  schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
-  url_base_exclude: https://ecatalog.calstatela.edu
-  max_concurrency: 1
-  crawl_depth: 50
+# - name: cal_state_la
+#   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
+#   schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
+#   url_base_exclude: https://ecatalog.calstatela.edu
+#   max_concurrency: 1
+#   crawl_depth: 50
 
 # - name: texas_tech
 #   root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
@@ -322,17 +329,17 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 63
 
-- name: university_of_nebraska_lincoln
-  root_url: https://catalog.unl.edu/undergraduate/courses/
-  schema_url: https://catalog.unl.edu/undergraduate/courses/acts/
-  max_concurrency: 1
-  crawl_depth: 3
+# - name: university_of_nebraska_lincoln
+#   root_url: https://catalog.unl.edu/undergraduate/courses/
+#   schema_url: https://catalog.unl.edu/undergraduate/courses/acts/
+#   max_concurrency: 1
+#   crawl_depth: 3
 
-- name: kettering_university
-  root_url: https://catalog.kettering.edu/coursesaz/
-  schema_url: https://catalog.kettering.edu/coursesaz/undergrad/soc/
-  max_concurrency: 1
-  crawl_depth: 4
+# - name: kettering_university
+#   root_url: https://catalog.kettering.edu/coursesaz/
+#   schema_url: https://catalog.kettering.edu/coursesaz/undergrad/soc/
+#   max_concurrency: 1
+#   crawl_depth: 4
 
 # - name: tennessee_state_university_graduate
 #   root_url: https://catalog.tnstate.edu/content.php?catoid=18&navoid=1019
@@ -348,17 +355,17 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 22
 
-- name: Memorial University of Newfoundland
-  root_url: https://www.mun.ca/university-calendar/
-  schema_url: https://www.mun.ca/university-calendar/st-johns-campus/faculty-of-medicine/12/2/
-  max_concurrency: 1
-  crawl_depth: 5
+# - name: Memorial University of Newfoundland
+#   root_url: https://www.mun.ca/university-calendar/
+#   schema_url: https://www.mun.ca/university-calendar/st-johns-campus/faculty-of-medicine/12/2/
+#   max_concurrency: 1
+#   crawl_depth: 5
 
-- name: Penn State
-  root_url: https://bulletins.psu.edu/university-course-descriptions/
-  schema_url: https://bulletins.psu.edu/university-course-descriptions/undergraduate/be/
-  max_concurrency: 1
-  crawl_depth: 4
+# - name: Penn State
+#   root_url: https://bulletins.psu.edu/university-course-descriptions/
+#   schema_url: https://bulletins.psu.edu/university-course-descriptions/undergraduate/be/
+#   max_concurrency: 1
+#   crawl_depth: 4
 
 # - name: Stony Brook University undergraduate
 #   root_url: https://catalog.stonybrook.edu/content.php?catoid=7&navoid=225
@@ -388,11 +395,11 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 48
 
-- name: Georgia Tech
-  root_url: https://catalog.gatech.edu/coursesaz/
-  schema_url: https://catalog.gatech.edu/coursesaz/bmed/
-  max_concurrency: 1
-  crawl_depth: 3
+# - name: Georgia Tech
+#   root_url: https://catalog.gatech.edu/coursesaz/
+#   schema_url: https://catalog.gatech.edu/coursesaz/bmed/
+#   max_concurrency: 1
+#   crawl_depth: 3
 
 ##### BLOCK FLAG #####
 # - name: University of Central Florida
@@ -415,11 +422,11 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 26
 
-- name: University of Maryland
-  root_url: https://academiccatalog.umd.edu/
-  schema_url: https://academiccatalog.umd.edu/graduate/courses/bumk/
-  max_concurrency: 1
-  crawl_depth: 4
+# - name: University of Maryland
+#   root_url: https://academiccatalog.umd.edu/
+#   schema_url: https://academiccatalog.umd.edu/graduate/courses/bumk/
+#   max_concurrency: 1
+#   crawl_depth: 4
 
 # - name: Florida A&M University
 #   root_url: https://catalog.famu.edu/content.php?catoid=14&navoid=1322
