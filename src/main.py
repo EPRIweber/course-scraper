@@ -457,7 +457,7 @@ async def main():
 
     # sources: list[SourceConfig] = await storage.list_sources
     all_sources: list[SourceConfig] = await storage.list_sources()
-    yaml_sources: list[SourceConfig] = config.sources[0]
+    yaml_sources: list[SourceConfig] = config.sources[:2]
     yaml_names = [s.name for s in yaml_sources]
     local_sources = [
         src for src in all_sources
