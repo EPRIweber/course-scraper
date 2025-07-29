@@ -236,7 +236,7 @@ async def validate_schema(
         )
 
         sample = json.dumps(records[0], indent=2)
-        text = f"Sample record from schema validation:\n{sample}", 
+        text = f"Sample record from schema validation:\n{sample}"
         
         if records:
             output = text
