@@ -394,9 +394,16 @@ async def main():
 
     logger.info("Run ID: %d", run_id)
 
-    sources: list[SourceConfig] = await storage.list_sources
+    # sources: list[SourceConfig] = await storage.list_sources
+    all_sources: list[SourceConfig] = await storage.list_sources()
+    yaml_sources: list[SourceConfig] = config.sources
+    yaml_names = [s.name for s in yaml_sources]
+    local_sources = [
+        src for src in all_sources
+        if src.name in yaml_names
+    ]
 
-    MAX_CONCURRENT = 10
+    MAX_CONCURRENT = 1
     sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
     async def limited_run(source: SourceConfig, run_id: int, storage: StorageBackend):
         async with sem:
@@ -411,12 +418,12 @@ async def main():
     try:
         tasks = [
             limited_run(source, run_id, storage)
-            for source in sources
+            for source in local_sources
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for source, result in zip(sources, results):
+        for source, result in zip(local_sources, results):
             if isinstance(result, Exception):
                 logger.error(f"Pipeline for {source.name} FAILED: {result}")
                 await storage.log(
