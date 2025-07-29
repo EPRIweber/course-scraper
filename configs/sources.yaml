@@ -22,9 +22,9 @@ sources:
 #   crawl_depth: 8
 
 - name: purdue_university
-  root_url: https://catalog.purdue.edu/content.php?catoid=7&navoid=2928
-  schema_url: https://catalog.purdue.edu/preview_course_nopop.php?catoid=7&coid=50181
-  type: "html"
+  root_url: https://catalog.purdue.edu/content.php?catoid=18&navoid=23635
+  schema_url: https://catalog.purdue.edu/preview_course_nopop.php?catoid=18&coid=206829
+  url_base_exclude: https://catalog.purdue.edu
   crawl_depth: 80
   include_external: True
 
@@ -33,13 +33,6 @@ sources:
 #   schema_url: https://catalog.yale.edu/ycps/courses/cpsc/
 #   type: "html"
 #   crawl_depth: 4
-
-# CAN REQUEST FOR COURSES DIRECTLY IF NEEDED
-- name: florida_state_university
-  root_url: https://catalog.fsu.edu/
-  schema_url: https://catalog.fsu.edu/preview_course.php?catoid=24&coid=26268
-  type: "html"
-  crawl_depth: 3
 
 # - name: duke_university
 #   root_url: https://registrar.duke.edu/bulletins/
