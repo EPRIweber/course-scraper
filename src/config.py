@@ -68,4 +68,4 @@ class ValidationCheck:
     valid: bool
     fields_missing: list[str] = None
     errors: list[any] = None
-    sample: any = None
+    output: any = None

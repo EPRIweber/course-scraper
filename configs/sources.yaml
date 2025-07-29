@@ -1,11 +1,11 @@
 sources:
 
-- name: north_carolina_state_university
-  root_url: https://catalog.ncsu.edu/course-descriptions/
-  schema_url: https://catalog.ncsu.edu/course-descriptions/csc/
-  url_base_exclude: 
-  max_concurrency: 1
-  crawl_depth: 4
+# - name: north_carolina_state_university
+#   root_url: https://catalog.ncsu.edu/course-descriptions/
+#   schema_url: https://catalog.ncsu.edu/course-descriptions/csc/
+#   url_base_exclude: 
+#   max_concurrency: 1
+#   crawl_depth: 4
 
 # - name: brown_university
 #   root_url: https://bulletin.brown.edu/
@@ -315,19 +315,19 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 3
 
-# - name: cal_state_la
-#   root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
-#   schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
-#   url_base_exclude: https://ecatalog.calstatela.edu
-#   max_concurrency: 1
-#   crawl_depth: 50
+- name: cal_state_la
+  root_url: https://ecatalog.calstatela.edu/content.php?catoid=75&navoid=10950
+  schema_url: https://ecatalog.calstatela.edu/preview_course_nopop.php?catoid=75&coid=548116
+  url_base_exclude: https://ecatalog.calstatela.edu
+  max_concurrency: 1
+  crawl_depth: 50
 
-# - name: texas_tech
-#   root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
-#   schema_url: https://catalog.ttu.edu/preview_course_nopop.php?catoid=21&coid=120564
-#   url_base_exclude: https://catalog.ttu.edu
-#   max_concurrency: 1
-#   crawl_depth: 63
+- name: texas_tech
+  root_url: https://catalog.ttu.edu/content.php?catoid=21&navoid=1998
+  schema_url: https://catalog.ttu.edu/preview_course_nopop.php?catoid=21&coid=120564
+  url_base_exclude: https://catalog.ttu.edu
+  max_concurrency: 1
+  crawl_depth: 63
 
 # - name: university_of_nebraska_lincoln
 #   root_url: https://catalog.unl.edu/undergraduate/courses/
@@ -341,19 +341,19 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 4
 
-# - name: tennessee_state_university_graduate
-#   root_url: https://catalog.tnstate.edu/content.php?catoid=18&navoid=1019
-#   schema_url: https://catalog.tnstate.edu/preview_course_nopop.php?catoid=18&coid=32680
-#   url_base_exclude: https://catalog.tnstate.edu
-#   max_concurrency: 1
-#   crawl_depth: 11
+- name: tennessee_state_university_graduate
+  root_url: https://catalog.tnstate.edu/content.php?catoid=18&navoid=1019
+  schema_url: https://catalog.tnstate.edu/preview_course_nopop.php?catoid=18&coid=32680
+  url_base_exclude: https://catalog.tnstate.edu
+  max_concurrency: 1
+  crawl_depth: 11
 
-# - name: tennessee_state_university_undergraduate
-#   root_url: https://catalog.tnstate.edu/content.php?catoid=17&navoid=951
-#   schema_url: https://catalog.tnstate.edu/preview_course_nopop.php?catoid=17&coid=28509
-#   url_base_exclude: https://catalog.tnstate.edu
-#   max_concurrency: 1
-#   crawl_depth: 22
+- name: tennessee_state_university_undergraduate
+  root_url: https://catalog.tnstate.edu/content.php?catoid=17&navoid=951
+  schema_url: https://catalog.tnstate.edu/preview_course_nopop.php?catoid=17&coid=28509
+  url_base_exclude: https://catalog.tnstate.edu
+  max_concurrency: 1
+  crawl_depth: 22
 
 # - name: Memorial University of Newfoundland
 #   root_url: https://www.mun.ca/university-calendar/
@@ -367,33 +367,33 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 4
 
-# - name: Stony Brook University undergraduate
-#   root_url: https://catalog.stonybrook.edu/content.php?catoid=7&navoid=225
-#   schema_url: https://catalog.stonybrook.edu/preview_course_nopop.php?catoid=7&coid=8146
-#   url_base_exclude: https://catalog.stonybrook.edu
-#   max_concurrency: 1
-#   crawl_depth: 35
+- name: Stony Brook University undergraduate
+  root_url: https://catalog.stonybrook.edu/content.php?catoid=7&navoid=225
+  schema_url: https://catalog.stonybrook.edu/preview_course_nopop.php?catoid=7&coid=8146
+  url_base_exclude: https://catalog.stonybrook.edu
+  max_concurrency: 1
+  crawl_depth: 35
 
-# - name: Stony Brook University graduate
-#   root_url: https://catalog.stonybrook.edu/content.php?catoid=4&navoid=223
-#   schema_url: https://catalog.stonybrook.edu/preview_course_nopop.php?catoid=4&coid=1320
-#   url_base_exclude: https://catalog.stonybrook.edu
-#   max_concurrency: 1
-#   crawl_depth: 38
+- name: Stony Brook University graduate
+  root_url: https://catalog.stonybrook.edu/content.php?catoid=4&navoid=223
+  schema_url: https://catalog.stonybrook.edu/preview_course_nopop.php?catoid=4&coid=1320
+  url_base_exclude: https://catalog.stonybrook.edu
+  max_concurrency: 1
+  crawl_depth: 38
 
-# - name: University of Buffalo undergraduate
-#   root_url: https://catalogs.buffalo.edu/content.php?catoid=17&navoid=862
-#   schema_url: https://catalogs.buffalo.edu/preview_course_nopop.php?catoid=17&coid=160786
-#   url_base_exclude: https://catalogs.buffalo.edu
-#   max_concurrency: 1
-#   crawl_depth: 41
+- name: University of Buffalo undergraduate
+  root_url: https://catalogs.buffalo.edu/content.php?catoid=17&navoid=862
+  schema_url: https://catalogs.buffalo.edu/preview_course_nopop.php?catoid=17&coid=160786
+  url_base_exclude: https://catalogs.buffalo.edu
+  max_concurrency: 1
+  crawl_depth: 41
 
-# - name: University of Buffalo graduate
-#   root_url: https://catalogs.buffalo.edu/content.php?catoid=12&navoid=721
-#   schema_url: https://catalogs.buffalo.edu/preview_course_nopop.php?catoid=12&coid=78289
-#   url_base_exclude: https://catalogs.buffalo.edu
-#   max_concurrency: 1
-#   crawl_depth: 48
+- name: University of Buffalo graduate
+  root_url: https://catalogs.buffalo.edu/content.php?catoid=12&navoid=721
+  schema_url: https://catalogs.buffalo.edu/preview_course_nopop.php?catoid=12&coid=78289
+  url_base_exclude: https://catalogs.buffalo.edu
+  max_concurrency: 1
+  crawl_depth: 48
 
 # - name: Georgia Tech
 #   root_url: https://catalog.gatech.edu/coursesaz/
@@ -402,25 +402,25 @@ sources:
 #   crawl_depth: 3
 
 ##### BLOCK FLAG #####
-# - name: University of Central Florida
-#   root_url: https://www.ucf.edu/catalog/
-#   schema_url: https://www.ucf.edu/catalog/graduate/#/courses/HJAsYJuod?bc=true&bcCurrent=ACG6305%20-%20Advanced%20Managerial%20Accounting&bcGroup=ACG%20-%20Accounting%20General&bcItemType=courses
-#   max_concurrency: 1
-#   crawl_depth: 6
+- name: University of Central Florida
+  root_url: https://www.ucf.edu/catalog/
+  schema_url: https://www.ucf.edu/catalog/graduate/#/courses/HJAsYJuod?bc=true&bcCurrent=ACG6305%20-%20Advanced%20Managerial%20Accounting&bcGroup=ACG%20-%20Accounting%20General&bcItemType=courses
+  max_concurrency: 1
+  crawl_depth: 6
 
-# - name: University of Alabama in Huntsville
-#   root_url: https://catalog.uah.edu/#/courses
-#   schema_url: https://catalog.uah.edu/#/courses/BJjeRNSJh?group=Accounting&bc=true&bcCurrent=ACC201%20-%20ACC%20%26%20FIN%20FOR%20ENTREPRENEURS&bcGroup=Accounting&bcItemType=courses
-#   max_concurrency: 1
-#   crawl_depth: 4
+- name: University of Alabama in Huntsville
+  root_url: https://catalog.uah.edu/#/courses
+  schema_url: https://catalog.uah.edu/#/courses/BJjeRNSJh?group=Accounting&bc=true&bcCurrent=ACC201%20-%20ACC%20%26%20FIN%20FOR%20ENTREPRENEURS&bcGroup=Accounting&bcItemType=courses
+  max_concurrency: 1
+  crawl_depth: 4
 ##### END BLOCK FLAG #####
 
-# - name: North Carolina A&T
-#   root_url: https://catalog.ncat.edu/content.php?catoid=5&navoid=182
-#   schema_url: https://catalog.ncat.edu/preview_course_nopop.php?catoid=5&coid=9675
-#   url_base_exclude: https://catalog.ncat.edu
-#   max_concurrency: 1
-#   crawl_depth: 26
+- name: North Carolina A&T
+  root_url: https://catalog.ncat.edu/content.php?catoid=5&navoid=182
+  schema_url: https://catalog.ncat.edu/preview_course_nopop.php?catoid=5&coid=9675
+  url_base_exclude: https://catalog.ncat.edu
+  max_concurrency: 1
+  crawl_depth: 26
 
 # - name: University of Maryland
 #   root_url: https://academiccatalog.umd.edu/
@@ -428,33 +428,33 @@ sources:
 #   max_concurrency: 1
 #   crawl_depth: 4
 
-# - name: Florida A&M University
-#   root_url: https://catalog.famu.edu/content.php?catoid=14&navoid=1322
-#   schema_url: https://catalog.famu.edu/preview_course_nopop.php?catoid=14&coid=131287
-#   url_base_exclude: https://catalog.famu.edu
-#   max_concurrency: 1
-#   crawl_depth: 59
+- name: Florida A&M University
+  root_url: https://catalog.famu.edu/content.php?catoid=14&navoid=1322
+  schema_url: https://catalog.famu.edu/preview_course_nopop.php?catoid=14&coid=131287
+  url_base_exclude: https://catalog.famu.edu
+  max_concurrency: 1
+  crawl_depth: 59
 
-# - name: University of Delaware Undergraduate
-#   root_url: https://catalog.udel.edu/content.php?catoid=94&navoid=34643
-#   schema_url: https://catalog.udel.edu/preview_course_nopop.php?catoid=94&coid=685469
-#   url_base_exclude: https://catalog.udel.edu
-#   max_concurrency: 1
-#   crawl_depth: 50
+- name: University of Delaware Undergraduate
+  root_url: https://catalog.udel.edu/content.php?catoid=94&navoid=34643
+  schema_url: https://catalog.udel.edu/preview_course_nopop.php?catoid=94&coid=685469
+  url_base_exclude: https://catalog.udel.edu
+  max_concurrency: 1
+  crawl_depth: 50
 
-# - name: University of Delaware Graduate
-#   root_url: https://catalog.udel.edu/content.php?catoid=93&navoid=30539
-#   schema_url: https://catalog.udel.edu/preview_course_nopop.php?catoid=93&coid=617598
-#   url_base_exclude: https://catalog.udel.edu
-#   max_concurrency: 1
-#   crawl_depth: 34
+- name: University of Delaware Graduate
+  root_url: https://catalog.udel.edu/content.php?catoid=93&navoid=30539
+  schema_url: https://catalog.udel.edu/preview_course_nopop.php?catoid=93&coid=617598
+  url_base_exclude: https://catalog.udel.edu
+  max_concurrency: 1
+  crawl_depth: 34
 
-# - name: Howard University
-#   root_url: https://catalog.howardcollege.edu/content.php?catoid=24&navoid=1312
-#   schema_url: https://catalog.howardcollege.edu/preview_course_nopop.php?catoid=24&coid=31959
-#   url_base_exclude: https://catalog.howardcollege.edu
-#   max_concurrency: 1
-#   crawl_depth: 11
+- name: Howard University
+  root_url: https://catalog.howardcollege.edu/content.php?catoid=24&navoid=1312
+  schema_url: https://catalog.howardcollege.edu/preview_course_nopop.php?catoid=24&coid=31959
+  url_base_exclude: https://catalog.howardcollege.edu
+  max_concurrency: 1
+  crawl_depth: 11
 
 # - name: 
 #   root_url: 

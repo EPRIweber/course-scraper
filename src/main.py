@@ -93,7 +93,7 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
                 source=source
             )
             check: ValidationCheck
-            await _log(stage, check.sample)
+            await _log(stage, check.output)
             if check.valid:
                 await _log(stage, "successfully validated generated schema")
                 await storage.save_schema(source.source_id, schema)
@@ -324,6 +324,67 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
 # -----------------------------------------------------------------------------
 # Orchestration for a single school
 # -----------------------------------------------------------------------------
+
+async def enable_new_school(
+    school: str,
+    run_id: int,
+    storage: StorageBackend,
+) -> SourceConfig | None:
+    """Generate config, upsert source, then run generate schema."""
+    async def _log(source_id: str, st: Stage, msg: str):
+        logger.info(f"[{school}] {msg}")
+        await storage.log(run_id, source_id, int(st), msg)
+    try:
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Generating Source for {school}"
+        )
+        src_cfg, root_usage, schema_usage = await discover_source_config(school)
+        src_cfg: SourceConfig
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Source Generated for {school}"
+        )
+    except Exception as e:
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Config generation failed for {school}: {e}"
+        )
+        raise Exception(f"Config generation failed for {school}: {e}")
+    try:
+        real_id = await storage.ensure_source(src_cfg)
+        src_cfg.source_id = real_id
+    except Exception as e:
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Failed to upsert source {school}: {e}"
+        )
+        raise Exception(f"Failed to upsert source {school}: {e}")
+        
+    await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
+    return src_cfg
+    # await _log(real_id, Stage.SCHEMA, f"Beginning schema generation for {school}")
+    # try:
+    #     await process_schema(run_id, src_cfg, storage)
+    #     await _log(real_id, Stage.SCHEMA, f"Completed schema generation for {school}")
+    #     return src_cfg
+    # except Exception as e:
+    #     await _log(
+    #         run_id=run_id,
+    #         src_id=real_id,
+    #         stage=Stage.SCHEMA,
+    #         msg=f"Failed to generate schema for {school}: {e}"
+    #     )
+    #     raise Exception(f"Failed to generate schema for {school}: {e}")
+
 async def run_scrape_pipeline(
     source: SourceConfig,
     run_id: int,
@@ -372,8 +433,8 @@ async def run_scrape_pipeline(
     await _log(Stage.STORAGE, f"Beginning pipeline for {source.name}")
     try:
         await process_schema(run_id, source, storage)
-        await process_crawl(run_id, source, storage)
-        await process_scrape(run_id, source, storage)
+        # await process_crawl(run_id, source, storage)
+        # await process_scrape(run_id, source, storage)
         await _log(Stage.STORAGE, f"Completed pipeline for {source.name}")
     except Exception as exc:
         await _log(Stage.CRAWL, f"FAILED: {exc}")
@@ -396,7 +457,7 @@ async def main():
 
     # sources: list[SourceConfig] = await storage.list_sources
     all_sources: list[SourceConfig] = await storage.list_sources()
-    yaml_sources: list[SourceConfig] = config.sources
+    yaml_sources: list[SourceConfig] = config.sources[0]
     yaml_names = [s.name for s in yaml_sources]
     local_sources = [
         src for src in all_sources
