@@ -6,7 +6,7 @@ import os
 import logging
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
-from crawl4ai import AsyncWebCrawler
+from crawl4ai import AsyncWebCrawler, BM25ContentFilter
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
@@ -33,7 +33,7 @@ GOOGLE_CSE_ENDPOINT = "https://www.googleapis.com/customsearch/v1"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CX = os.getenv("GOOGLE_CX")
 
-KEYWORDS = ["catalog", "bulletin", "courses", "curriculum"]
+KEYWORDS = ["catalog", "bulletin", "course", "curriculum", "description", "current"]
 
 async def discover_source_config(name: str) -> tuple[SourceConfig, int, int]:
     """Discover a ``SourceConfig`` for ``name``."""
@@ -68,31 +68,37 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         logger.warning("Search failed for %s", school)
         raise e
     
-    total = []
-    for r in results:
+    filtered = filter_catalog_urls(results)
+    combined = filtered + results
+    deduped = list(OrderedDict.fromkeys(combined))
+    top_hits = deduped[:3]
+
+    # 1) build a flat list of {url,snippet} dicts
+    pages: List[dict] = []
+    for hit in top_hits:
         temp = SourceConfig(
             source_id=f"TEMP_{school}",
             name=school,
-            root_url=r,
-            schema_url=r,
-            crawl_depth=2
+            root_url=hit,
+            schema_url=hit,
+            crawl_depth=1,
+            url_exclude_patterns=["search", "archive"],
         )
-        total += await crawl_and_collect_urls(
+        # crawl just one hop out from each hit
+        sub_urls = await crawl_and_collect_urls(
             temp,
             make_root_filter=False,
-            max_links_per_page=10
+            # max_links_per_page=10
         )
+        # only keep “catalog”‑y ones
+        catalogs = filter_catalog_urls(sub_urls)
+        # build a small list you’ll actually fetch snippets for:
+        to_fetch = [hit] + catalogs[:4]   # 1 + up to 9 = 10 pages/site
+
+        # fetch and append
+        pages += await fetch_snippets(to_fetch, return_html=True)
     
-    candidates = filter_catalog_urls(total)
 
-    combined = candidates + total
-    ordered_by_priority = list(OrderedDict.fromkeys(combined))
-
-    # browser_cfg = BrowserConfig(headless=True, verbose=False)
-    # run_cfg = make_markdown_run_cfg(timeout_s=60)
-
-    # async with AsyncWebCrawler(config=browser_cfg) as crawler:
-    pages = await fetch_snippets(ordered_by_priority[:min(100, len(ordered_by_priority))])
     root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
     if not root_url:
         raise Exception(f"No root URL found for {school}")
@@ -105,20 +111,20 @@ async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
         name=school,
         root_url=root_url,
         schema_url=root_url,
-        url_base_exclude=shared_domain,
+        # url_base_exclude=shared_domain,
         crawl_depth=3
     )
     all_urls = await crawl_and_collect_urls(
         temp,
-        make_root_filter=False,
-        max_links_per_page=50
+        # make_root_filter=False,
+        # max_links_per_page=50
     )
     seen = set(); unique = []
     for u in all_urls:
         if u not in seen:
             seen.add(u); unique.append(u)
 
-    schema_pages = await fetch_snippets(unique[:min(100, len(unique))])
+    schema_pages = await fetch_snippets(unique[:min(120, len(unique))])
     schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
     if not schema_url:
         raise Exception(f"No schema URL returned for {school}")
@@ -129,20 +135,29 @@ def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     return CrawlerRunConfig(
         cache_mode=CacheMode.ENABLED,
         markdown_generator=DefaultMarkdownGenerator(
-            content_filter=PruningContentFilter(threshold=0.5),
+            content_filter=PruningContentFilter(threshold=0.3),
             options={"ignore_links": True},
         ),
         page_timeout=timeout_s * 1000,
     )
 
-async def fetch_snippets(urls: List[str]) -> List[dict]:
+async def fetch_snippets(
+        urls: List[str],
+        return_html: Optional[bool] = False
+    ) -> List[dict]:
     """Fetch each URL via Playwright+HTTPX fallback and hand back raw HTML."""
     pages = []
     for url in urls:
         try:
             html = await fetch_page(url)
-            markdown_page = get_content_of_website_optimized(url, html)
-            pages.append({"url": url, "snippet": markdown_page})
+            if return_html:
+                pruner = PruningContentFilter(threshold=0.2)
+                chunks = pruner.filter_content(html)
+                chunks = filter(lambda chunk: chunk if chunk.strip() else None, chunks)
+                snippet = "\n".join(chunks)
+            else:
+                snippet = get_content_of_website_optimized(url, html)
+            pages.append({"url": url, "snippet": snippet})
             await asyncio.sleep(0.2)
         except Exception as e:
             logger.debug("Failed to fetch %s for snippet: %s", url, e)

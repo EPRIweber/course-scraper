@@ -228,9 +228,11 @@ async def _static_bfs_crawl(
             while queue:
                 url, depth = queue.popleft()
                 print(f"Processing URL: {url} at depth {depth}")
-                if url in seen or depth >= max_crawl_depth:
+                if url in seen:
                     continue
                 seen.add(url)
+                if depth == max_crawl_depth:
+                    continue
 
                 try:
                     logger.debug(f"Crawling URL (depth {depth}): {url}")
@@ -268,4 +270,3 @@ async def _static_bfs_crawl(
 
     return seen
 
-# fetch helpers are provided by src.render_utils
