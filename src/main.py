@@ -457,44 +457,96 @@ async def main():
 
     # sources: list[SourceConfig] = await storage.list_sources
     all_sources: list[SourceConfig] = await storage.list_sources()
+    task_sources = all_sources
     yaml_sources: list[SourceConfig] = config.sources
     yaml_names = [s.name for s in yaml_sources]
     local_sources = [
         src for src in all_sources
         if src.name in yaml_names
     ]
+    # task_sources = local_sources
 
-    MAX_CONCURRENT = 1
-    sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
-    async def limited_run(source: SourceConfig, run_id: int, storage: StorageBackend):
-        async with sem:
-            await storage.log(
-                run_id=run_id,
-                src_id=None,
-                stage=Stage.CRAWL,
-                msg=(f"[{source}] starting (slots left: {sem._value})")
-            )
-            return await run_scrape_pipeline(source, run_id, storage)
+    async def _run_phase(source: SourceConfig, fn):
+        # helper to call fn(run_id, source, storage) and return None or raise
+        await fn(run_id, source, storage)
+        return None
 
     try:
-        tasks = [
-            limited_run(source, run_id, storage)
-            for source in local_sources
-        ]
+        # Phase 1: schema
+        sem_schema = asyncio.BoundedSemaphore(3)
+        async def sem_schema_task(src):
+            async with sem_schema:
+                return src, await _run_phase(src, process_schema)
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        schema_results = await asyncio.gather(
+            *(sem_schema_task(src) for src in task_sources),
+            return_exceptions=True
+        )
 
-        for source, result in zip(local_sources, results):
+        # Keep only the SourceConfigs whose schema succeeded
+        to_crawl = []
+        for src, result in schema_results:
             if isinstance(result, Exception):
-                logger.error(f"Pipeline for {source.name} FAILED: {result}")
-                await storage.log(
-                    run_id=run_id,
-                    src_id=None,
-                    stage=Stage.CRAWL,
-                    msg=f"Pipeline for {source.name} FAILED: {result}"
-                )
+                logger.error(f"[{src.name}] schema failed: {result}")
             else:
-                print(f"Task succeeded with result: {result}")
+                to_crawl.append(src)
+
+        if not to_crawl:
+            logger.info("No schemas succeeded; exiting.")
+            await storage.end_run(run_id)
+            return
+
+        # Phase 2: crawl + scrape
+        sem_pipeline = asyncio.BoundedSemaphore(3)
+        async def sem_pipeline_task(src):
+            async with sem_pipeline:
+                return src, await _run_phase(src, run_scrape_pipeline)
+
+        pipeline_results = await asyncio.gather(
+            *(sem_pipeline_task(src) for src in to_crawl),
+            return_exceptions=True
+        )
+
+        for src, result in pipeline_results:
+            if isinstance(result, Exception):
+                logger.error(f"[{src.name}] crawl+scrape failed: {result}")
+            else:
+                logger.info(f"[{src.name}] pipeline succeeded")
+
+        await storage.end_run(run_id)
+        await close_playwright()
+
+    # MAX_CONCURRENT = 1
+    # sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
+    # async def limited_run(source: SourceConfig, run_id: int, storage: StorageBackend):
+    #     async with sem:
+    #         await storage.log(
+    #             run_id=run_id,
+    #             src_id=None,
+    #             stage=Stage.CRAWL,
+    #             msg=(f"[{source}] starting (slots left: {sem._value})")
+    #         )
+    #         return await run_scrape_pipeline(source, run_id, storage)
+
+    # try:
+    #     tasks = [
+    #         limited_run(source, run_id, storage)
+    #         for source in local_sources
+    #     ]
+
+    #     results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    #     for source, result in zip(local_sources, results):
+    #         if isinstance(result, Exception):
+    #             logger.error(f"Pipeline for {source.name} FAILED: {result}")
+    #             await storage.log(
+    #                 run_id=run_id,
+    #                 src_id=None,
+    #                 stage=Stage.CRAWL,
+    #                 msg=f"Pipeline for {source.name} FAILED: {result}"
+    #             )
+    #         else:
+    #             print(f"Task succeeded with result: {result}")
 
     except Exception as exc:
         await storage.log(
