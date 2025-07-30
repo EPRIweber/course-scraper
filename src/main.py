@@ -394,9 +394,9 @@ async def main():
     # yaml_names = [s.name for s in yaml_sources]
     target_sources = [
         src for src in all_sources
-        if src.name in [
-            'University of Florida',
-            'Rutgers University'
+        if src.name.lower() in [
+            'university of florida',
+            'rutgers university'
         ]
         # if src.name in yaml_names
     ]
