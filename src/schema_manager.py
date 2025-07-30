@@ -235,11 +235,12 @@ async def validate_schema(
             source=source
         )
         
-        sample = json.dumps(records[0], indent=4)
-        output = f"Sample record for schema validation:\n{sample}"
 
         if not records:
             log.warning(f"No records returned for {source.name}")
+        else:
+            sample = json.dumps(records[0], indent=4)
+            output = f"Sample record for schema validation:\n{sample}"
 
         # surface JSON decode errors, if any
         if json_errors:
