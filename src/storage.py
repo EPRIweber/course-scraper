@@ -307,7 +307,7 @@ class SqlServerStorage(StorageBackend):
                 rec.get("course_description") or None,
                 rec.get("course_credits") or None
             )
-            for rec in data
+            for rec in data if rec.get("course_code") and rec.get("course_title")
         ]
 
         sql = """
