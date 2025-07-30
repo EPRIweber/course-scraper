@@ -11,7 +11,7 @@ import csv
 import json
 import logging, logging.config
 import os
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
 from src.config_generator import discover_source_config
@@ -402,12 +402,12 @@ async def main():
     ]
     task_sources = target_sources
 
-    async def _run_phase(source: SourceConfig, stage: int, fn: function):
+    async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]]):
         await storage.log(
             run_id,
             source.source_id,
             stage,
-            f"[{src.name}] running {fn.__name__} (slots left: {sem_schema._value})"
+            f"[{source.name}] running {fn.__name__} (slots left: {sem_schema._value})"
         )
         await fn(run_id, source, storage)
 
@@ -423,11 +423,10 @@ async def main():
             return_exceptions=True
         )
 
-        # Keep only the SourceConfigs whose schema succeeded
         to_crawl = []
         for src, result in schema_results:
             if isinstance(result, Exception):
-                storage.log(
+                await storage.log(
                     run_id,
                     src.source_id,
                     Stage.SCHEMA,
@@ -439,7 +438,7 @@ async def main():
 
         if not to_crawl:
             logger.info("No sources to crawl.")
-            storage.log(
+            await storage.log(
                 run_id,
                 None,
                 Stage.CRAWL,
@@ -457,19 +456,10 @@ async def main():
             return_exceptions=True
         )
 
-        if not to_scrape:
-            logger.info("No sources to scrape.")
-            storage.log(
-                run_id,
-                None,
-                Stage.CRAWL,
-                "No sources to scrape."
-            )
-
         to_scrape = []
         for src, result in crawl_results:
             if isinstance(result, Exception):
-                storage.log(
+                await storage.log(
                     run_id,
                     None,
                     Stage.CRAWL,
@@ -479,6 +469,15 @@ async def main():
             else:
                 logger.info(f"[{src.name}] crawl succeeded")
                 to_scrape.append(src)
+
+        if not to_scrape:
+            logger.info("No sources to scrape.")
+            await storage.log(
+                run_id,
+                None,
+                Stage.CRAWL,
+                "No sources to scrape."
+            )
         
         # Phase 3: scrape
         sem_scrape = asyncio.BoundedSemaphore(3)
@@ -493,7 +492,7 @@ async def main():
 
         for src, result in scrape_results:
             if isinstance(result, Exception):
-                storage.log(
+                await storage.log(
                     run_id,
                     src.source_id,
                     Stage.SCRAPE,
@@ -514,9 +513,9 @@ async def main():
         raise Exception(exc)
 
     finally:
+        await close_playwright()
         await storage.end_run(run_id)               # unlock mutex
         logger.info("Run %d completed – lock released.", run_id)
-        await close_playwright()
 
 async def testing():
     # test_source = config.sources[0]
