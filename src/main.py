@@ -212,7 +212,8 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
                 records, good_urls, bad_urls, result_errors = await scrape_urls(urls, schema, source)
                 if result_errors:
                     joined_result_errors = "\n\n\n".join(result_errors)
-                    await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
+                    # await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
+                    _log(stage, f"WARNING: Found {len(result_errors)}, successfully extracted {len(records)} records.")
                 if not records:
                     await _log(stage, "ERROR: No records extracted from pages")
                     joined_result_errors = "\n\n\n".join(result_errors)
@@ -395,42 +396,42 @@ async def main():
     target_sources = [
         src for src in all_sources
         if src.name in [
-            # 'appalachian_state_university_undergraduate',
-            # 'appalachian_state_university_graduate',
-            # 'morgan_state_university_undergraduate',
-            # 'louisiana_state_university',
-            # 'western_michigan_university_undergraduate',
-            # 'bowie_state_university_undergraduate',
-            # 'bluefield_state_college',
-            # 'western_michigan_university_graduate',
-            # 'morgan_state_university_graduate',
-            # 'adams_state_university',
-            # 'bowie_state_university_graduate',
-            # 'tuskegee_university',
-            # 'cal_poly_pomona',
-            # 'clemson_university_graduate',
-            # 'furman_university_undergraduate',
-            # 'cal_poly_humboldt',
-            # 'fayetteville_state_university_graduate',
-            # 'san_diego_state_university',
-            # 'fayetteville_state_university_undergraduate',
-            # 'fort_valley_state_university_undergraduate',
-            # 'fort_valley_state_university_graduate',
-            # 'elizabeth_city_state_university_undergraduate',
-            # 'elizabeth_city_state_university_graduate',
-            # 'clemson_university_undergraduate',
-            # 'tennessee_state_university_undergraduate',
-            # 'tennessee_state_university_graduate',
-            # 'University of Buffalo undergraduate',
-            # 'Stony Brook University undergraduate',
-            # 'University of Buffalo graduate',
-            # 'Stony Brook University graduate',
-            # 'Florida A&M University',
-            # 'North Carolina A&T',
-            # 'Howard University',
-            # 'University of Delaware Undergraduate',
-            # 'University of Delaware Graduate',
-            # 'purdue_university',
+            'appalachian_state_university_undergraduate',
+            'appalachian_state_university_graduate',
+            'morgan_state_university_undergraduate',
+            'louisiana_state_university',
+            'western_michigan_university_undergraduate',
+            'bowie_state_university_undergraduate',
+            'bluefield_state_college',
+            'western_michigan_university_graduate',
+            'morgan_state_university_graduate',
+            'adams_state_university',
+            'bowie_state_university_graduate',
+            'tuskegee_university',
+            'cal_poly_pomona',
+            'clemson_university_graduate',
+            'furman_university_undergraduate',
+            'cal_poly_humboldt',
+            'fayetteville_state_university_graduate',
+            'san_diego_state_university',
+            'fayetteville_state_university_undergraduate',
+            'fort_valley_state_university_undergraduate',
+            'fort_valley_state_university_graduate',
+            'elizabeth_city_state_university_undergraduate',
+            'elizabeth_city_state_university_graduate',
+            'clemson_university_undergraduate',
+            'tennessee_state_university_undergraduate',
+            'tennessee_state_university_graduate',
+            'University of Buffalo undergraduate',
+            'Stony Brook University undergraduate',
+            'University of Buffalo graduate',
+            'Stony Brook University graduate',
+            'Florida A&M University',
+            'North Carolina A&T',
+            'Howard University',
+            'University of Delaware Undergraduate',
+            'University of Delaware Graduate',
+            'purdue_university',
             'furman_university_graduate'
         ]
         # if src.name in yaml_names
@@ -447,7 +448,7 @@ async def main():
         await fn(run_id, source, storage)
 
     try:
-        batch_size = 1
+        batch_size = 5
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
             # Phase 1: schema
