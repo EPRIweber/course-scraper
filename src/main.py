@@ -394,9 +394,44 @@ async def main():
     # yaml_names = [s.name for s in yaml_sources]
     target_sources = [
         src for src in all_sources
-        if src.name.lower() in [
-            'university of florida',
-            'rutgers university'
+        if src.name in [
+            'appalachian_state_university_undergraduate',
+            'appalachian_state_university_graduate',
+            'morgan_state_university_undergraduate',
+            'louisiana_state_university',
+            'western_michigan_university_undergraduate',
+            'bowie_state_university_undergraduate',
+            'bluefield_state_college',
+            'western_michigan_university_graduate',
+            'morgan_state_university_graduate',
+            'adams_state_university',
+            'bowie_state_university_graduate',
+            'tuskegee_university',
+            'cal_poly_pomona',
+            'clemson_university_graduate',
+            'furman_university_undergraduate',
+            'cal_poly_humboldt',
+            'fayetteville_state_university_graduate',
+            'san_diego_state_university',
+            'fayetteville_state_university_undergraduate',
+            'fort_valley_state_university_undergraduate',
+            'fort_valley_state_university_graduate',
+            'elizabeth_city_state_university_undergraduate',
+            'elizabeth_city_state_university_graduate',
+            'clemson_university_undergraduate',
+            'tennessee_state_university_undergraduate',
+            'tennessee_state_university_graduate',
+            'University of Buffalo undergraduate',
+            'Stony Brook University undergraduate',
+            'University of Buffalo graduate',
+            'Stony Brook University graduate',
+            'Florida A&M University',
+            'North Carolina A&T',
+            'Howard University',
+            'University of Delaware Undergraduate',
+            'University of Delaware Graduate',
+            'purdue_university',
+            'furman_university_graduate'
         ]
         # if src.name in yaml_names
     ]
@@ -412,95 +447,98 @@ async def main():
         await fn(run_id, source, storage)
 
     try:
-        # Phase 1: schema
-        sem_schema = asyncio.BoundedSemaphore(3)
-        async def sem_schema_task(src: SourceConfig):
-            async with sem_schema:
-                return src, await _run_phase(src, Stage.SCHEMA, process_schema)
+        batch_size = 3
+        for batch in (task_sources[i:i+batch_size] 
+                  for i in range(0, len(task_sources), batch_size)):
+            # Phase 1: schema
+            sem_schema = asyncio.BoundedSemaphore(batch_size)
+            async def sem_schema_task(src: SourceConfig):
+                async with sem_schema:
+                    return src, await _run_phase(src, Stage.SCHEMA, process_schema)
 
-        schema_results = await asyncio.gather(
-            *(sem_schema_task(src) for src in task_sources),
-            return_exceptions=True
-        )
-
-        to_crawl = []
-        for src, result in schema_results:
-            if isinstance(result, Exception):
-                await storage.log(
-                    run_id,
-                    src.source_id,
-                    Stage.SCHEMA,
-                    f"[{src.name}] schema failed: {result}"
-                )
-                logger.warning(f"[{src.name}] schema failed: {result}")
-            else:
-                to_crawl.append(src)
-
-        if not to_crawl:
-            logger.info("No sources to crawl.")
-            await storage.log(
-                run_id,
-                None,
-                Stage.CRAWL,
-                "No sources to crawl."
+            schema_results = await asyncio.gather(
+                *(sem_schema_task(src) for src in batch),
+                return_exceptions=True
             )
 
-        # Phase 2: crawl
-        sem_crawl = asyncio.BoundedSemaphore(3)
-        async def sem_crawl_task(src: SourceConfig):
-            async with sem_crawl:
-                return src, await _run_phase(src, Stage.CRAWL, process_crawl)
+            to_crawl = []
+            for src, result in schema_results:
+                if isinstance(result, Exception):
+                    await storage.log(
+                        run_id,
+                        src.source_id,
+                        Stage.SCHEMA,
+                        f"[{src.name}] schema failed: {result}"
+                    )
+                    logger.warning(f"[{src.name}] schema failed: {result}")
+                else:
+                    to_crawl.append(src)
 
-        crawl_results = await asyncio.gather(
-            *(sem_crawl_task(src) for src in to_crawl),
-            return_exceptions=True
-        )
-
-        to_scrape = []
-        for src, result in crawl_results:
-            if isinstance(result, Exception):
+            if not to_crawl:
+                logger.info("No sources to crawl.")
                 await storage.log(
                     run_id,
                     None,
                     Stage.CRAWL,
-                    f"[{src.name}] crawl failed: {result}"
+                    "No sources to crawl."
                 )
-                logger.warning(f"[{src.name}] crawl failed: {result}")
-            else:
-                logger.info(f"[{src.name}] crawl succeeded")
-                to_scrape.append(src)
 
-        if not to_scrape:
-            logger.info("No sources to scrape.")
-            await storage.log(
-                run_id,
-                None,
-                Stage.CRAWL,
-                "No sources to scrape."
+            # Phase 2: crawl
+            sem_crawl = asyncio.BoundedSemaphore(batch_size)
+            async def sem_crawl_task(src: SourceConfig):
+                async with sem_crawl:
+                    return src, await _run_phase(src, Stage.CRAWL, process_crawl)
+
+            crawl_results = await asyncio.gather(
+                *(sem_crawl_task(src) for src in to_crawl),
+                return_exceptions=True
             )
-        
-        # Phase 3: scrape
-        sem_scrape = asyncio.BoundedSemaphore(3)
-        async def sem_scrape_task(src: SourceConfig):
-            async with sem_scrape:
-                return src, await _run_phase(src, Stage.SCRAPE, process_scrape)
-        
-        scrape_results = await asyncio.gather(
-            *(sem_scrape_task(src) for src in to_scrape),
-            return_exceptions=True
-        )
 
-        for src, result in scrape_results:
-            if isinstance(result, Exception):
+            to_scrape = []
+            for src, result in crawl_results:
+                if isinstance(result, Exception):
+                    await storage.log(
+                        run_id,
+                        None,
+                        Stage.CRAWL,
+                        f"[{src.name}] crawl failed: {result}"
+                    )
+                    logger.warning(f"[{src.name}] crawl failed: {result}")
+                else:
+                    logger.info(f"[{src.name}] crawl succeeded")
+                    to_scrape.append(src)
+
+            if not to_scrape:
+                logger.info("No sources to scrape.")
                 await storage.log(
                     run_id,
-                    src.source_id,
-                    Stage.SCRAPE,
-                    f"[{src.name}] scrape failed: {result}"
+                    None,
+                    Stage.CRAWL,
+                    "No sources to scrape."
                 )
-                logger.warning(f"[{src.name}] scrape failed: {result}")
-            else:
-                logger.info(f"[{src.name}] scrape succeeded")
+            
+            # Phase 3: scrape
+            sem_scrape = asyncio.BoundedSemaphore(batch_size)
+            async def sem_scrape_task(src: SourceConfig):
+                async with sem_scrape:
+                    return src, await _run_phase(src, Stage.SCRAPE, process_scrape)
+            
+            scrape_results = await asyncio.gather(
+                *(sem_scrape_task(src) for src in to_scrape),
+                return_exceptions=True
+            )
+
+            for src, result in scrape_results:
+                if isinstance(result, Exception):
+                    await storage.log(
+                        run_id,
+                        src.source_id,
+                        Stage.SCRAPE,
+                        f"[{src.name}] scrape failed: {result}"
+                    )
+                    logger.warning(f"[{src.name}] scrape failed: {result}")
+                else:
+                    logger.info(f"[{src.name}] scrape succeeded")
 
     
     except Exception as exc:
