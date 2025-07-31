@@ -309,6 +309,9 @@ class SqlServerStorage(StorageBackend):
             )
             for rec in data if rec.get("course_code") and rec.get("course_title")
         ]
+        if not tvp_rows:
+            # nothing valid to insert
+            return
 
         sql = """
             DECLARE @t dbo.CourseData_v2;

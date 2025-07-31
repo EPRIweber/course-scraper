@@ -105,7 +105,7 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
                     ))
                 if check.errors:
                     errors_joined = "\n\n\n".join(check.errors)
-                    await _log(stage, f"Validation errors: \n{errors_joined}")
+                    # await _log(stage, f"Validation errors: \n{errors_joined}")
                 raise Exception(f"Invalid schema generated for {source.name}")
         else:
             await _log(stage, f"Schema already created for {source.name}")
@@ -437,24 +437,28 @@ async def main():
     ]
     task_sources = target_sources
 
-    async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]]):
+    async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]], sem: asyncio.BoundedSemaphore):
         await storage.log(
             run_id,
             source.source_id,
-            stage,
-            f"[{source.name}] running {fn.__name__} (slots left: {sem_schema._value})"
+            int(stage),
+            f"[{source.name}] running {fn.__name__} (slots left: {sem._value})"
         )
         await fn(run_id, source, storage)
 
     try:
-        batch_size = 3
+        batch_size = 5
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
             # Phase 1: schema
             sem_schema = asyncio.BoundedSemaphore(batch_size)
             async def sem_schema_task(src: SourceConfig):
                 async with sem_schema:
-                    return src, await _run_phase(src, Stage.SCHEMA, process_schema)
+                    try:
+                        await _run_phase(src, Stage.SCHEMA, process_schema, sem_schema)
+                        return src, None
+                    except Exception as e:
+                        return src, e
 
             schema_results = await asyncio.gather(
                 *(sem_schema_task(src) for src in batch),
@@ -487,7 +491,11 @@ async def main():
             sem_crawl = asyncio.BoundedSemaphore(batch_size)
             async def sem_crawl_task(src: SourceConfig):
                 async with sem_crawl:
-                    return src, await _run_phase(src, Stage.CRAWL, process_crawl)
+                    try:
+                        await _run_phase(src, Stage.CRAWL, process_crawl, sem_crawl)
+                        return src, None
+                    except Exception as e:
+                        return src, e
 
             crawl_results = await asyncio.gather(
                 *(sem_crawl_task(src) for src in to_crawl),
@@ -521,7 +529,11 @@ async def main():
             sem_scrape = asyncio.BoundedSemaphore(batch_size)
             async def sem_scrape_task(src: SourceConfig):
                 async with sem_scrape:
-                    return src, await _run_phase(src, Stage.SCRAPE, process_scrape)
+                    try:
+                        await _run_phase(src, Stage.SCRAPE, process_scrape, sem_scrape)
+                        return src, None
+                    except Exception as e:
+                        return src, e
             
             scrape_results = await asyncio.gather(
                 *(sem_scrape_task(src) for src in to_scrape),
