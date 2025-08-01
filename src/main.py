@@ -397,32 +397,44 @@ async def main():
         src for src in all_sources
         if src.clean_name in [
             'adams state university',
-            'appalachian state university',
             'bluefield state college',
-            'bowie state university',
             'cal poly humboldt',
             'cal poly pomona',
-            'cal state la',
             'clemson university',
             'elizabeth city state university',
             'fayetteville state university',
-            'florida a&m university',
             'fort valley state university',
-            'furman university',
-            'howard university',
             'louisiana state university',
             'morgan state university',
-            'north carolina a&t',
-            'purdue university',
             'san diego state university',
-            'stony brook university',
-            'tennessee state university',
-            'texas tech',
             'tuskegee university',
+            # 'adams state university',
+            # 'appalachian state university',
+            # 'bluefield state college',
+            # 'bowie state university',
+            # 'cal poly humboldt',
+            # 'cal poly pomona',
+            # 'cal state la',
+            # 'clemson university',
+            # 'elizabeth city state university',
+            # 'fayetteville state university',
+            # 'florida a&m university',
+            # 'fort valley state university',
+            # 'furman university',
+            # 'howard university',
+            # 'louisiana state university',
+            # 'morgan state university',
+            # 'north carolina a&t',
+            # 'purdue university',
+            # 'san diego state university',
+            # 'stony brook university',
+            # 'tennessee state university',
+            # 'texas tech',
+            # 'tuskegee university',
             # 'university of buffalo',
-            'university of delaware',
-            'university of houston',
-            'western michigan university',
+            # 'university of delaware',
+            # 'university of houston',
+            # 'western michigan university',
         ]
         # if src.name in yaml_names
     ]
@@ -438,7 +450,7 @@ async def main():
         await fn(run_id, source, storage)
 
     try:
-        batch_size = 10
+        batch_size = 5
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
             # Phase 1: schema
@@ -508,7 +520,7 @@ async def main():
                     to_scrape.append(src)
 
 
-            to_scrape = []
+            # to_scrape = []
 
             if not to_scrape:
                 logger.info("No sources to scrape.")

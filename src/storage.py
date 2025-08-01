@@ -165,9 +165,9 @@ class SqlServerStorage(StorageBackend):
         sql = """
             SELECT DISTINCT s.*
             FROM sources AS s
-            JOIN courses AS c
+            LEFT JOIN courses AS c
             ON s.source_id = c.course_source_id
-            WHERE c.course_id IS NOT NULL
+            WHERE c.course_id IS NULL
         """
         rows = await self._fetch(sql)
         if not rows:
