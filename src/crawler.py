@@ -18,6 +18,7 @@ import ssl
 import warnings
 import httpx
 from bs4 import BeautifulSoup
+from lxml import etree
 
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
@@ -172,7 +173,7 @@ async def _static_bfs_crawl(
     async with httpx.AsyncClient(
         timeout=timeout,
         follow_redirects=True,
-        verify=False,
+        verify=True,
         limits=limits,
     ) as client:
         resp = await client.get(str(root_url))
@@ -209,7 +210,7 @@ async def _static_bfs_crawl(
                     
                     if "preview_course_nopop.php" in full:
                         seen.add(full)
-
+                # xsoup:etree._Element = etree.HTML(str(soup))
                 for a in soup.select('tr > td[colspan="2"] > a[href]', href=True):
                     href = a['href'].split('#')[0]
                     if not href or href.startswith(("mailto:", "tel:")):
