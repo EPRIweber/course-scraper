@@ -396,18 +396,23 @@ async def main():
     target_sources = [
         src for src in all_sources
         if src.clean_name in [
-            'adams state university',
-            'bluefield state college',
-            'cal poly humboldt',
-            'cal poly pomona',
-            'clemson university',
-            'elizabeth city state university',
-            'fayetteville state university',
-            'fort valley state university',
-            'louisiana state university',
-            'morgan state university',
-            'san diego state university',
-            'tuskegee university',
+            'university of florida'
+
+            # 'adams state university',
+            # 'bluefield state college',
+            # 'cal poly humboldt',
+            # 'cal poly pomona',
+            # 'clemson university',
+            # 'elizabeth city state university',
+            # 'fayetteville state university',
+            # 'fort valley state university',
+            # 'louisiana state university',
+            # 'morgan state university',
+            # 'san diego state university',
+            # 'tuskegee university',
+
+
+
             # 'adams state university',
             # 'appalachian state university',
             # 'bluefield state college',
@@ -439,6 +444,22 @@ async def main():
         # if src.name in yaml_names
     ]
     task_sources = target_sources
+
+    # print(len(task_sources), "sources to process")
+
+    # if len(task_sources) == 1:
+    #     grad_config = task_sources[0]
+    #     grad_config.clean_name = None
+    #     grad_config.source_id = "LOCAL_UNIVERSITY_OF_FLORIDA_GRADUATE"
+    #     grad_config.name = "University of Florida Graduate"
+    #     grad_config.root_url = "https://gradcatalog.ufl.edu/graduate/courses-az/"
+    #     grad_config.schema_url = "https://gradcatalog.ufl.edu/graduate/courses-az/chemical_engineering/"
+
+    #     source_id = await storage.ensure_source(grad_config)
+
+    #     print(f"Inserting grad config for University of Florida with source_id {source_id}")
+    
+    # task_sources = []
 
     async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]], sem: asyncio.BoundedSemaphore):
         await storage.log(

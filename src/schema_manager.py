@@ -133,7 +133,8 @@ async def _generate_schema_from_llm(
 
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
-        repeating_block="course_block",
+        repeating_block="course block",
+        repeating_item="course",
         required_fields=REQUIRED_FIELDS,
         optional_fields=OPTIONAL_FIELDS,
         html=html_for_schema,
