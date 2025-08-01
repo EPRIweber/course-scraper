@@ -28,6 +28,8 @@ class StorageBackend(ABC):
     @abstractmethod
     async def list_sources(self) -> list[SourceConfig]: ...
     @abstractmethod
+    async def get_tasks(self) -> List[SourceConfig]: ...
+    @abstractmethod
     async def list_distinct(self) -> list[tuple[str,str,str,str,str]]: ...
     @abstractmethod
     async def ensure_source(self, src_cfg: SourceConfig) -> str: ...
@@ -151,6 +153,35 @@ class SqlServerStorage(StorageBackend):
                 schema_url=r.schema_url,
                 include_external=r.include_external,
                 crawl_depth=r.crawl_depth,
+                page_timeout_s=r.page_timeout_s,
+                max_concurrency=r.max_concurrency,
+                url_base_exclude=r.url_base_exclude,
+                url_exclude_patterns=json.loads(r.url_exclude_patterns or "[]")
+            )
+            for r in rows
+        ]
+    
+    async def get_tasks(self) -> List[SourceConfig]:
+        sql = """
+            SELECT DISTINCT s.*
+            FROM sources AS s
+            JOIN courses AS c
+            ON s.source_id = c.course_source_id
+            WHERE c.course_id IS NOT NULL
+        """
+        rows = await self._fetch(sql)
+        if not rows:
+            return []
+        return [
+            SourceConfig(
+                source_id=r.source_id,
+                name=r.source_name,
+                clean_name=r.cleaned_name,
+                type=r.source_type,
+                root_url=r.source_base_url,
+                schema_url=r.source_schema_url,
+                include_external=r.include_external,
+                crawl_depth=r.source_crawl_depth,
                 page_timeout_s=r.page_timeout_s,
                 max_concurrency=r.max_concurrency,
                 url_base_exclude=r.url_base_exclude,

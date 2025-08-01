@@ -17,6 +17,7 @@ class SourceConfig(BaseModel):
     type: str = "html"
     root_url: HttpUrl
     schema_url: HttpUrl
+    clean_name: str = None
     include_external: Optional[bool] = False
     crawl_depth: Optional[int] = 100
     page_timeout_s: Optional[int] = 60
