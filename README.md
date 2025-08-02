@@ -35,6 +35,35 @@ The script pulls enabled sources from the database, crawls each site, scrapes
 course records and writes them back to storage.  Logs are written to the
 console and the `logs` table in the database.
 
+## Performance Dashboard (MVP)
+
+This repository includes a minimal dashboard for monitoring scraper runs.
+
+### Backend API
+
+The FastAPI service exposes `GET /api/performance` which reads from the
+`scraper_performance` view.  Configure database credentials with the same
+environment variables used by the scraper (`DB_SERVER`, `DB_NAME`, `DB_USER`,
+`DB_PASS`).
+
+```bash
+uvicorn dashboard.backend.main:app --reload
+```
+
+### Frontend
+
+A Vite/React frontend lives in `dashboard/frontend`.  It fetches metrics from
+the backend and renders a sortable table and basic chart.  To run it:
+
+```bash
+cd dashboard/frontend
+npm install
+npm run dev
+```
+
+The dev server proxies API calls to `localhost:8000` by default.
+
+
 ## Pipeline Overview
 
 ```
