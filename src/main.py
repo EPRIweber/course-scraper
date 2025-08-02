@@ -11,7 +11,7 @@ import csv
 import json
 import logging, logging.config
 import os
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
 from src.config_generator import discover_source_config
@@ -88,12 +88,12 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         if (not schema) or (not schema.get("baseSelector")):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
-            check, output = await validate_schema(
+            check: ValidationCheck = await validate_schema(
                 schema=schema,
                 source=source
             )
             check: ValidationCheck
-            await _log(stage, output)
+            await _log(stage, check.output)
             if check.valid:
                 await _log(stage, "successfully validated generated schema")
                 await storage.save_schema(source.source_id, schema)
@@ -105,7 +105,7 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
                     ))
                 if check.errors:
                     errors_joined = "\n\n\n".join(check.errors)
-                    await _log(stage, f"Validation errors: \n{errors_joined}")
+                    # await _log(stage, f"Validation errors: \n{errors_joined}")
                 raise Exception(f"Invalid schema generated for {source.name}")
         else:
             await _log(stage, f"Schema already created for {source.name}")
@@ -210,9 +210,11 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
             if not records:
                 await _log(stage, f"no data found, scraping {len(urls)} pages")
                 records, good_urls, bad_urls, result_errors = await scrape_urls(urls, schema, source)
+                await _log(stage, f"scraped {len(records)} records from {len(urls)} pages")
                 if result_errors:
                     joined_result_errors = "\n\n\n".join(result_errors)
-                    await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
+                    # await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
+                    _log(stage, f"WARNING: Found {len(result_errors)}, successfully extracted {len(records)} records.")
                 if not records:
                     await _log(stage, "ERROR: No records extracted from pages")
                     joined_result_errors = "\n\n\n".join(result_errors)
@@ -220,25 +222,27 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
                     raise Exception(f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}\n\n for {source.name}")
                 await _log(stage, f"{len(records)} records scraped")
 
-            # -------- STORAGE -----------------------------------------------
-            stage = Stage.STORAGE
-            await _log(stage, "writing records to DB")
-            # Ensure records is always a list of dicts
-            if isinstance(records, dict):
-                records = [records]
-            await storage.save_data(source.source_id, records)
-            if hasattr(storage, "update_url_targets"):
-                # Ensure good_urls and bad_urls are lists of strings
-                if not isinstance(good_urls, list):
-                    good_urls = list(good_urls) if good_urls else []
-                if not isinstance(bad_urls, list):
-                    bad_urls = list(bad_urls) if bad_urls else []
-                await storage.update_url_targets(
-                    source_id=source.source_id,
-                    good_urls=good_urls,
-                    bad_urls=bad_urls
-                )
-            await _log(stage, "done")
+                # -------- STORAGE -----------------------------------------------
+                stage = Stage.STORAGE
+                await _log(stage, "writing records to DB")
+                # Ensure records is always a list of dicts
+                if isinstance(records, dict):
+                    records = [records]
+                await storage.save_data(source.source_id, records)
+                if hasattr(storage, "update_url_targets"):
+                    # Ensure good_urls and bad_urls are lists of strings
+                    if not isinstance(good_urls, list):
+                        good_urls = list(good_urls) if good_urls else []
+                    if not isinstance(bad_urls, list):
+                        bad_urls = list(bad_urls) if bad_urls else []
+                    await storage.update_url_targets(
+                        source_id=source.source_id,
+                        good_urls=good_urls,
+                        bad_urls=bad_urls
+                    )
+                await _log(stage, "done")
+            else:
+                await _log(stage, f"Data already exists for {source.name} with {len(records)} records")
         except Exception as exc:
             await _log(stage, f"FAILED: {exc}")
             logger.exception(exc)
@@ -324,12 +328,13 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
 # -----------------------------------------------------------------------------
 # Orchestration for a single school
 # -----------------------------------------------------------------------------
-async def run_scrape_pipeline(
+
+async def process_config(
     school: str,
     run_id: int,
     storage: StorageBackend,
-) -> None:
-    """Generate config, upsert source, then run schema→crawl→scrape→classify."""
+) -> SourceConfig | None:
+    """Generate config, upsert source, then run generate schema."""
     async def _log(source_id: str, st: Stage, msg: str):
         logger.info(f"[{school}] {msg}")
         await storage.log(run_id, source_id, int(st), msg)
@@ -369,14 +374,7 @@ async def run_scrape_pipeline(
         raise Exception(f"Failed to upsert source {school}: {e}")
         
     await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
-    await _log(real_id, Stage.STORAGE, f"Beginning pipeline for {school}")
-    
-    await process_schema(run_id, src_cfg, storage)
-    # await process_crawl(run_id, src_cfg, storage)
-    # await process_scrape(run_id, src_cfg, storage)
-    # await process_classify(run_id, src_cfg, storage)
-    # logger.info("Completed pipeline for %s", school)
-    await _log(real_id, Stage.STORAGE, f"Completed pipeline for {school}")
+    return src_cfg
 
 async def main():
     storage = await get_storage_backend()
@@ -393,61 +391,225 @@ async def main():
 
     logger.info("Run ID: %d", run_id)
 
-    MAX_CONCURRENT = 10
-    sem = asyncio.BoundedSemaphore(MAX_CONCURRENT)
-    async def limited_run(school: str, run_id: int, storage: StorageBackend):
-        async with sem:
-            await storage.log(
-                run_id=run_id,
-                src_id=None,
-                stage=Stage.CRAWL,
-                msg=(f"[{school}] starting (slots left: {sem._value})")
-            )
-            return await run_scrape_pipeline(school, run_id, storage)
+    # sources: list[SourceConfig] = await storage.list_sources
+    all_sources: list[SourceConfig] = await storage.get_tasks()
+    task_sources = all_sources
+    # yaml_sources: list[SourceConfig] = config.sources
+    # yaml_names = [s.name for s in yaml_sources]
+    target_sources = [
+        src for src in all_sources
+        if src.clean_name in [
+            # 'university of florida'
 
+            'adams state university',
+            # 'bluefield state college',
+            'cal poly pomona',
+            'clemson university',
+            'elizabeth city state university',
+            'louisiana state university',
+            'morgan state university',
+            'tuskegee university',
+            'fort valley state university',
+            'cal poly humboldt',
+            'san diego state university',
+
+
+
+            # 'university of buffalo',
+            # 'adams state university',
+            # 'appalachian state university',
+            # 'bluefield state college',
+            # 'bowie state university',
+            # 'cal poly humboldt',
+            # 'cal poly pomona',
+            # 'cal state la',
+            # 'clemson university',
+            # 'elizabeth city state university',
+            # 'fayetteville state university',
+            # 'florida a&m university',
+            # 'fort valley state university',
+            # 'furman university',
+            # 'howard university',
+            # 'louisiana state university',
+            # 'morgan state university',
+            # 'north carolina a&t',
+            # 'purdue university',
+            # 'san diego state university',
+            # 'stony brook university',
+            # 'tennessee state university',
+            # 'texas tech',
+            # 'tuskegee university',
+            # 'university of buffalo',
+            # 'university of delaware',
+            # 'university of houston',
+            # 'western michigan university',
+        ]
+        # if src.name in yaml_names
+    ]
+    task_sources = target_sources
+
+    # print(len(task_sources), "sources to process")
+
+    # if len(task_sources) == 1:
+    #     grad_config = task_sources[0]
+    #     grad_config.clean_name = None
+    #     grad_config.source_id = "LOCAL_UNIVERSITY_OF_FLORIDA_GRADUATE"
+    #     grad_config.name = "University of Florida Graduate"
+    #     grad_config.root_url = "https://gradcatalog.ufl.edu/graduate/courses-az/"
+    #     grad_config.schema_url = "https://gradcatalog.ufl.edu/graduate/courses-az/chemical_engineering/"
+
+    #     source_id = await storage.ensure_source(grad_config)
+
+    #     print(f"Inserting grad config for University of Florida with source_id {source_id}")
+    
+    # task_sources = []
+
+    async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]], sem: asyncio.BoundedSemaphore):
+        await storage.log(
+            run_id,
+            source.source_id,
+            int(stage),
+            f"[{source.name}] running {fn.__name__} (slots left: {sem._value})"
+        )
+        await fn(run_id, source, storage)
+        
+    batch_size = 2
+    storage.log(
+        run_id,
+        None,
+        Stage.CRAWL,
+        f"Starting run with {len(task_sources)} sources (batch size: {batch_size})"
+    )
+    
     try:
-        new_schools = []
-        with open('configs/new_schools.csv', 'r') as f:
-            csv_reader = csv.reader(f)
-            for r in csv_reader:
-                new_schools.append(r[0])
-
-        try:
-            tasks = [
-                limited_run(school, run_id, storage)
-                for school in new_schools
-            ]
-
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for school, result in zip(new_schools, results):
-                if isinstance(result, Exception):
-                    logger.error(f"Pipeline for {school} FAILED: {result}")
-                    await storage.log(
-                        run_id=run_id,
-                        src_id=None,
-                        stage=Stage.CRAWL,
-                        msg=f"Pipeline for {school} FAILED: {result}"
-                    )
-                else:
-                    print(f"Task succeeded with result: {result}")
-
-        except Exception as exc:
-            await storage.log(
-                run_id=run_id,
-                src_id=None,
-                stage=Stage.CRAWL,
-                msg=f"Pipeline Fail: {exc}"
+        for batch in (task_sources[i:i+batch_size] 
+                  for i in range(0, len(task_sources), batch_size)):
+            storage.log(
+                run_id,
+                None,
+                Stage.CRAWL,
+                f"Processing batch of {len(batch)} sources: {[src.name for src in batch]}"
             )
-            raise Exception(exc)
+            
+            # Phase 1: schema
+            sem_schema = asyncio.BoundedSemaphore(batch_size)
+            async def sem_schema_task(src: SourceConfig):
+                async with sem_schema:
+                    try:
+                        await _run_phase(src, Stage.SCHEMA, process_schema, sem_schema)
+                        return src, None
+                    except Exception as e:
+                        return src, e
 
+            schema_results = await asyncio.gather(
+                *(sem_schema_task(src) for src in batch),
+                return_exceptions=True
+            )
+
+            to_crawl = []
+            for src, result in schema_results:
+                if isinstance(result, Exception):
+                    await storage.log(
+                        run_id,
+                        src.source_id,
+                        Stage.SCHEMA,
+                        f"[{src.name}] schema failed: {result}"
+                    )
+                    logger.warning(f"[{src.name}] schema failed: {result}")
+                else:
+                    to_crawl.append(src)
+
+            if not to_crawl:
+                logger.info("No sources to crawl.")
+                await storage.log(
+                    run_id,
+                    None,
+                    Stage.CRAWL,
+                    "No sources to crawl."
+                )
+
+            # Phase 2: crawl
+            sem_crawl = asyncio.BoundedSemaphore(batch_size)
+            async def sem_crawl_task(src: SourceConfig):
+                async with sem_crawl:
+                    try:
+                        await _run_phase(src, Stage.CRAWL, process_crawl, sem_crawl)
+                        return src, None
+                    except Exception as e:
+                        return src, e
+
+            crawl_results = await asyncio.gather(
+                *(sem_crawl_task(src) for src in to_crawl),
+                return_exceptions=True
+            )
+
+            to_scrape = []
+            for src, result in crawl_results:
+                if isinstance(result, Exception):
+                    await storage.log(
+                        run_id,
+                        None,
+                        Stage.CRAWL,
+                        f"[{src.name}] crawl failed: {result}"
+                    )
+                    logger.warning(f"[{src.name}] crawl failed: {result}")
+                else:
+                    logger.info(f"[{src.name}] crawl succeeded")
+                    to_scrape.append(src)
+
+            # Uncomment to skip scraping
+            # to_scrape = []
+
+            if not to_scrape:
+                logger.info("No sources to scrape.")
+                await storage.log(
+                    run_id,
+                    None,
+                    Stage.CRAWL,
+                    "No sources to scrape."
+                )
+            
+            # Phase 3: scrape
+            sem_scrape = asyncio.BoundedSemaphore(batch_size)
+            async def sem_scrape_task(src: SourceConfig):
+                async with sem_scrape:
+                    try:
+                        await _run_phase(src, Stage.SCRAPE, process_scrape, sem_scrape)
+                        return src, None
+                    except Exception as e:
+                        return src, e
+            
+            scrape_results = await asyncio.gather(
+                *(sem_scrape_task(src) for src in to_scrape),
+                return_exceptions=True
+            )
+
+            for src, result in scrape_results:
+                if isinstance(result, Exception):
+                    await storage.log(
+                        run_id,
+                        src.source_id,
+                        Stage.SCRAPE,
+                        f"[{src.name}] scrape failed: {result}"
+                    )
+                    logger.warning(f"[{src.name}] scrape failed: {result}")
+                else:
+                    logger.info(f"[{src.name}] scrape succeeded")
+
+    
     except Exception as exc:
-        logger.exception("Critical error in run %d: %s", run_id, exc)
+        await storage.log(
+            run_id=run_id,
+            src_id=None,
+            stage=Stage.CRAWL,
+            msg=f"Pipeline Fail: {exc}"
+        )
+        raise Exception(exc)
 
     finally:
+        await close_playwright()
         await storage.end_run(run_id)               # unlock mutex
         logger.info("Run %d completed – lock released.", run_id)
-        await close_playwright()
 
 async def testing():
     # test_source = config.sources[0]

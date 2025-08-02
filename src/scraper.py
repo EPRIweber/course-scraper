@@ -135,7 +135,7 @@ async def _scrape_with_schema(
             good_pages.add(source_url)
         
         for item in items:
-            if ("course_title" in item) and ("course_description" in item):
+            if ("course_title" in item) and ("course_description" in item) and item["course_title"] and item["course_description"]:
                 item["_source_url"] = source_url
                 if "course_code" in item and isinstance(item["course_code"], list) and item["course_code"]:
                     str_codes: list[str] = []

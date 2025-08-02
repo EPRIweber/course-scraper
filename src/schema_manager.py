@@ -133,7 +133,8 @@ async def _generate_schema_from_llm(
 
     prompt: FindRepeating = FindRepeating(
         role="You specialize in exacting structured course data from course catalog websites.",
-        repeating_block="course_block",
+        repeating_block="course block",
+        repeating_item="course",
         required_fields=REQUIRED_FIELDS,
         optional_fields=OPTIONAL_FIELDS,
         html=html_for_schema,
@@ -235,12 +236,12 @@ async def validate_schema(
             source=source
         )
         
-        if records:
-            log.info("Sample record for schema validation:\n%s", json.dumps(records[0], indent=2))
-            output = "Sample record from schema validation:\n%s", json.dumps(records[0], indent=4)
-            print("Sample record for schema validation:\n%s", json.dumps(records[0], indent=4))
-        else:
+
+        if not records:
             log.warning(f"No records returned for {source.name}")
+        else:
+            sample = json.dumps(records[0], indent=4)
+            output = f"Sample record for schema validation:\n{sample}"
 
         # surface JSON decode errors, if any
         if json_errors:
@@ -273,5 +274,6 @@ async def validate_schema(
     return ValidationCheck(
         valid=valid,
         fields_missing=fields_missing,
-        errors=errors
-    ), output
+        errors=errors,
+        output=output
+    )
