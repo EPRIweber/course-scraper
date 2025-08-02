@@ -210,6 +210,7 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
             if not records:
                 await _log(stage, f"no data found, scraping {len(urls)} pages")
                 records, good_urls, bad_urls, result_errors = await scrape_urls(urls, schema, source)
+                await _log(stage, f"scraped {len(records)} records from {len(urls)} pages")
                 if result_errors:
                     joined_result_errors = "\n\n\n".join(result_errors)
                     # await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
