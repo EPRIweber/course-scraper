@@ -17,6 +17,7 @@ class SourceConfig(BaseModel):
     type: str = "html"
     root_url: HttpUrl
     schema_url: HttpUrl
+    clean_name: str = None
     include_external: Optional[bool] = False
     crawl_depth: Optional[int] = 100
     page_timeout_s: Optional[int] = 60
@@ -57,6 +58,7 @@ class Stage(IntEnum):
     SCRAPE  = 2
     STORAGE = 3
     CLASSIFY = 4
+    CONFIG = 0
 
 @dataclass
 class ValidationCheck:
@@ -66,5 +68,6 @@ class ValidationCheck:
     - errors: list[any]
     """
     valid: bool
-    fields_missing: list[str]
-    errors: list[any]
+    fields_missing: list[str] = None
+    errors: list[any] = None
+    output: any = None

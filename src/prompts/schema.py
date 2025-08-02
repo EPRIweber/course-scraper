@@ -16,15 +16,16 @@ class FindRepeating(PromptBase):
             type: Optional[str] = "css",
             role: Optional[str] = "You specialize in generating JSON extraction schemas for web scraping.",
             repeating_block: Optional[str] = None,
-            target_json_example: Optional[str] = None
+            target_json_example: Optional[str] = None,
+            repeating_item: Optional[str] = None,
     ):
         self.type = type.lower() if type.lower() in ["css", "xpath"] else "css"
         self.base_prompt = SCHEMA_BUILDER[type]
         self.html = html
         self.role = role
 
-        self.block_description = f"Within the given HTML, first you must identify the baseSelector to select distinct {repeating_block} instances. If only one instance of {repeating_block} occurs on the page, then just select that one." if repeating_block else "First you must identify the baseSelector to select the target repeating block."
-        self.fields_description = "The fields extracted for this schema **MUST** come from the field described below." if required_fields else ("You may use the fields provided below as examples for what to extract:" if (required_fields or optional_fields) else "It is up to you to decide the fields for extracting" )
+        self.block_description = f"Within the given HTML, first you must identify the baseSelector to select distinct {repeating_block} instances. If only one instance of {repeating_block} occurs on the page, then just select that one. However, if there are multiple {repeating_item}s exist on the page, then attempt to extract each one individually." if repeating_block and repeating_item else "First you must identify the baseSelector to select the target repeating block."
+        self.fields_description = "The fields extracted for this schema **MUST** come from the field described below." if required_fields else ("You may use the fields provided below as examples for what to extract:" if (required_fields or optional_fields) else "It is up to you to decide the fields for extracting")
         required_formatted = "\n".join(f" - {f}" for f in required_fields) if required_fields else None
         self.required_description = f"\n# The repeating block will **ALWAYS** have the required fields:\n{required_formatted}" if required_fields else None
         optional_formatted = "\n".join(f" - {f}" for f in optional_fields) if optional_fields else None
