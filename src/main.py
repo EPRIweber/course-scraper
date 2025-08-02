@@ -222,25 +222,27 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
                     raise Exception(f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}\n\n for {source.name}")
                 await _log(stage, f"{len(records)} records scraped")
 
-            # -------- STORAGE -----------------------------------------------
-            stage = Stage.STORAGE
-            await _log(stage, "writing records to DB")
-            # Ensure records is always a list of dicts
-            if isinstance(records, dict):
-                records = [records]
-            await storage.save_data(source.source_id, records)
-            if hasattr(storage, "update_url_targets"):
-                # Ensure good_urls and bad_urls are lists of strings
-                if not isinstance(good_urls, list):
-                    good_urls = list(good_urls) if good_urls else []
-                if not isinstance(bad_urls, list):
-                    bad_urls = list(bad_urls) if bad_urls else []
-                await storage.update_url_targets(
-                    source_id=source.source_id,
-                    good_urls=good_urls,
-                    bad_urls=bad_urls
-                )
-            await _log(stage, "done")
+                # -------- STORAGE -----------------------------------------------
+                stage = Stage.STORAGE
+                await _log(stage, "writing records to DB")
+                # Ensure records is always a list of dicts
+                if isinstance(records, dict):
+                    records = [records]
+                await storage.save_data(source.source_id, records)
+                if hasattr(storage, "update_url_targets"):
+                    # Ensure good_urls and bad_urls are lists of strings
+                    if not isinstance(good_urls, list):
+                        good_urls = list(good_urls) if good_urls else []
+                    if not isinstance(bad_urls, list):
+                        bad_urls = list(bad_urls) if bad_urls else []
+                    await storage.update_url_targets(
+                        source_id=source.source_id,
+                        good_urls=good_urls,
+                        bad_urls=bad_urls
+                    )
+                await _log(stage, "done")
+            else:
+                await _log(stage, f"Data already exists for {source.name} with {len(records)} records")
         except Exception as exc:
             await _log(stage, f"FAILED: {exc}")
             logger.exception(exc)
@@ -470,11 +472,25 @@ async def main():
             f"[{source.name}] running {fn.__name__} (slots left: {sem._value})"
         )
         await fn(run_id, source, storage)
-
+        
+    batch_size = 2
+    storage.log(
+        run_id,
+        None,
+        Stage.CRAWL,
+        f"Starting run with {len(task_sources)} sources (batch size: {batch_size})"
+    )
+    
     try:
-        batch_size = 2
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
+            storage.log(
+                run_id,
+                None,
+                Stage.CRAWL,
+                f"Processing batch of {len(batch)} sources: {[src.name for src in batch]}"
+            )
+            
             # Phase 1: schema
             sem_schema = asyncio.BoundedSemaphore(batch_size)
             async def sem_schema_task(src: SourceConfig):
