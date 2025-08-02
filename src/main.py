@@ -398,48 +398,48 @@ async def main():
         if src.clean_name in [
             # 'university of florida'
 
-            # 'adams state university',
+            'adams state university',
             # 'bluefield state college',
+            'cal poly pomona',
+            'clemson university',
+            'elizabeth city state university',
+            'louisiana state university',
+            'morgan state university',
+            'tuskegee university',
+            'fort valley state university',
+            'cal poly humboldt',
+            'san diego state university',
+
+
+
+            # 'university of buffalo',
+            # 'adams state university',
+            # 'appalachian state university',
+            # 'bluefield state college',
+            # 'bowie state university',
             # 'cal poly humboldt',
             # 'cal poly pomona',
+            # 'cal state la',
             # 'clemson university',
             # 'elizabeth city state university',
             # 'fayetteville state university',
+            # 'florida a&m university',
             # 'fort valley state university',
+            # 'furman university',
+            # 'howard university',
             # 'louisiana state university',
             # 'morgan state university',
+            # 'north carolina a&t',
+            # 'purdue university',
             # 'san diego state university',
+            # 'stony brook university',
+            # 'tennessee state university',
+            # 'texas tech',
             # 'tuskegee university',
-
-
-
-            'adams state university',
-            'appalachian state university',
-            'bluefield state college',
-            'bowie state university',
-            'cal poly humboldt',
-            'cal poly pomona',
-            'cal state la',
-            'clemson university',
-            'elizabeth city state university',
-            'fayetteville state university',
-            'florida a&m university',
-            'fort valley state university',
-            'furman university',
-            'howard university',
-            'louisiana state university',
-            'morgan state university',
-            'north carolina a&t',
-            'purdue university',
-            'san diego state university',
-            'stony brook university',
-            'tennessee state university',
-            'texas tech',
-            'tuskegee university',
-            'university of buffalo',
-            'university of delaware',
-            'university of houston',
-            'western michigan university',
+            # 'university of buffalo',
+            # 'university of delaware',
+            # 'university of houston',
+            # 'western michigan university',
         ]
         # if src.name in yaml_names
     ]
@@ -471,7 +471,7 @@ async def main():
         await fn(run_id, source, storage)
 
     try:
-        batch_size = 20
+        batch_size = 2
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
             # Phase 1: schema
@@ -512,7 +512,7 @@ async def main():
                 )
 
             # Phase 2: crawl
-            sem_crawl = asyncio.BoundedSemaphore(10)
+            sem_crawl = asyncio.BoundedSemaphore(batch_size)
             async def sem_crawl_task(src: SourceConfig):
                 async with sem_crawl:
                     try:
@@ -540,8 +540,8 @@ async def main():
                     logger.info(f"[{src.name}] crawl succeeded")
                     to_scrape.append(src)
 
-
-            to_scrape = []
+            # Uncomment to skip scraping
+            # to_scrape = []
 
             if not to_scrape:
                 logger.info("No sources to scrape.")
