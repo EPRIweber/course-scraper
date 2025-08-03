@@ -88,27 +88,29 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         if (not schema) or (not schema.get("baseSelector")):
             schema, usage = await generate_schema(source)
             await _log(stage, f"generated schema with {usage} tokens")
-            check: ValidationCheck = await validate_schema(
-                schema=schema,
-                source=source
-            )
-            check: ValidationCheck
-            await _log(stage, check.output)
-            if check.valid:
-                await _log(stage, "successfully validated generated schema")
-                await storage.save_schema(source.source_id, schema)
-            else:
-                await _log(stage, "ERROR: Invalid schema generated")
-                if check.fields_missing:
-                    await _log(stage, "Fields Missing: \n" + '\n'.join(
-                        '- ' + field for field in check.fields_missing
-                    ))
-                if check.errors:
-                    errors_joined = "\n\n\n".join(check.errors)
-                    # await _log(stage, f"Validation errors: \n{errors_joined}")
-                raise Exception(f"Invalid schema generated for {source.name}")
         else:
             await _log(stage, f"Schema already created for {source.name}")
+        
+        await _log(stage, f"Validating Schema: {json.dumps(schema, indent=2)}")
+        check: ValidationCheck = await validate_schema(
+            schema=schema,
+            source=source
+        )
+        check: ValidationCheck
+        await _log(stage, check.output)
+        if check.valid:
+            await _log(stage, "successfully validated generated schema")
+            await storage.save_schema(source.source_id, schema)
+        else:
+            await _log(stage, "ERROR: Invalid schema generated")
+            if check.fields_missing:
+                await _log(stage, "Fields Missing: \n" + '\n'.join(
+                    '- ' + field for field in check.fields_missing
+                ))
+            if check.errors:
+                errors_joined = "\n\n\n".join(check.errors)
+                await _log(stage, f"Validation errors: \n{errors_joined}")
+            raise Exception(f"Invalid schema generated for {source.name}")
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
@@ -440,6 +442,7 @@ async def main():
         await fn(run_id, source, storage)
         
     batch_size = 2
+    logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     storage.log(
         run_id,
         None,
@@ -484,7 +487,9 @@ async def main():
                     logger.warning(f"[{src.name}] schema failed: {result}")
                 else:
                     to_crawl.append(src)
-
+            
+            # continue
+        
             if not to_crawl:
                 logger.info("No sources to crawl.")
                 await storage.log(
