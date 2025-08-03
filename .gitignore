@@ -11,3 +11,4 @@ test.py
 tmp*
 node_modules
 vite
+dist
