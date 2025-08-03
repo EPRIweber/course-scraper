@@ -385,7 +385,7 @@ async def main():
     target_sources = [
         src for src in all_sources
         if src.name in [
-            'University of Buffalo graduate',
+            # 'University of Buffalo graduate',
             'University of Buffalo undergraduate',
             'University of Delaware Undergraduate',
             'purdue_university',
@@ -433,7 +433,7 @@ async def main():
         )
         await fn(run_id, source, storage)
     
-    batch_size = 10
+    batch_size = 1
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     await storage.log(
         run_id,
@@ -521,7 +521,7 @@ async def main():
                     to_scrape.append(src)
 
             # Uncomment to skip scraping
-            # to_scrape = []
+            continue
 
             if not to_scrape:
                 logger.info("No sources to scrape.")
