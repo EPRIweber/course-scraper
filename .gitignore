@@ -11,4 +11,4 @@ test.py
 tmp*
 node_modules
 vite
-dist
+dashboard/frontend/dist/assets
