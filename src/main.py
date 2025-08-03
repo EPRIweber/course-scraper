@@ -22,7 +22,7 @@ from src.prompts.taxonomy import load_full_taxonomy
 from src.schema_manager import generate_schema, validate_schema
 from src.scraper import scrape_urls
 from src.classify_manager import classify_courses, flatten_taxonomy
-from src.storage import SqlServerStorage, StorageBackend
+from src.storage import SqlServerScraping, StorageBackend
 
 LOGGING: dict = {
   "version": 1,
@@ -54,24 +54,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-async def get_storage_backend() -> Optional[StorageBackend]:
-    try:
-        conn_str = (
-            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
-            f"SERVER={os.getenv('DB_SERVER')};"
-            f"DATABASE={os.getenv('DB_NAME')};"
-            f"UID={os.getenv('DB_USER')};"
-            f"PWD={os.getenv('DB_PASS')};"
-            "TrustServerCertificate=yes;"
-            "Encrypt=yes;"
-            "MARS_Connection=Yes;"
-        )
-        logger.info("Using SQL-Server storage backend")
-        return SqlServerStorage(conn_str)
-    except Exception as exc:
-        logger.exception(exc)
-        raise Exception(exc)
-        
+
 async def process_schema(run_id: int, source: SourceConfig, storage: StorageBackend) -> None:
     stage: Stage = Stage.SCHEMA
 
@@ -99,10 +82,10 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
         check: ValidationCheck
         await _log(stage, check.output)
         if check.valid:
-            await _log(stage, "successfully validated generated schema")
+            await _log(stage, "successfully validated schema")
             await storage.save_schema(source.source_id, schema)
         else:
-            await _log(stage, "ERROR: Invalid schema generated")
+            await _log(stage, "ERROR: Invalid schema")
             if check.fields_missing:
                 await _log(stage, "Fields Missing: \n" + '\n'.join(
                     '- ' + field for field in check.fields_missing
@@ -110,7 +93,7 @@ async def process_schema(run_id: int, source: SourceConfig, storage: StorageBack
             if check.errors:
                 errors_joined = "\n\n\n".join(check.errors)
                 await _log(stage, f"Validation errors: \n{errors_joined}")
-            raise Exception(f"Invalid schema generated for {source.name}")
+            raise Exception(f"Invalid schema for {source.name}")
     except Exception as exc:
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
@@ -379,9 +362,10 @@ async def process_config(
     return src_cfg
 
 async def main():
-    storage = await get_storage_backend()
-    if storage is None:
-        logger.critical("SQL credentials missing – aborting.")
+    try:
+        storage: SqlServerScraping = SqlServerScraping()
+    except Exception as e:
+        logger.critical("SQL server storage backend failed to initialize: %s", e)
         return
     
     # --- mutex -----------------------------------------------------------
@@ -443,7 +427,7 @@ async def main():
     
     batch_size = 1
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
-    storage.log(
+    await storage.log(
         run_id,
         None,
         Stage.CRAWL,
@@ -453,7 +437,7 @@ async def main():
     try:
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
-            storage.log(
+            await storage.log(
                 run_id,
                 None,
                 Stage.CRAWL,

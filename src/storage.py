@@ -7,15 +7,64 @@ to save and fetch crawl results, schemas and classification data.
 
 import asyncio
 import json
+import os
 import pyodbc
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Sequence
+from typing import List, Dict, Any, Optional, Sequence, Tuple
 
 from src.config import SourceConfig, config
 from src.models import JobSummary
 
+def build_conn_str(connect_str: Optional[str] = None) -> str:
+    if connect_str:
+        return connect_str
+    dsn = os.getenv("DB_CONNECTION_STRING")
+    if dsn:
+        return dsn
+    server = os.getenv("DB_SERVER")
+    database = os.getenv("DB_NAME")
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASS")
+    if not all([server, database, user, password]):
+        raise RuntimeError("Database credentials are not fully specified")
+    return (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER={server};DATABASE={database};UID={user};PWD={password};"
+        "TrustServerCertificate=yes;Encrypt=yes;MARS_Connection=Yes;"
+    )
+
+
+def fetch_all_sync(conn_str: str, sql: str, params: Optional[Sequence[Any]] = None) -> List[Dict[str, Any]]:
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def fetch_one_sync(conn_str: str, sql: str, params: Optional[Sequence[Any]] = None) -> Optional[Tuple]:
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        return cur.fetchone()
+
+
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
+    def __init__(self, connect_str: str = None):
+        self._conn_str = build_conn_str(connect_str)
+        # legacy scraper class uses persistent connection + locking
+        self._conn = pyodbc.connect(self._conn_str, autocommit=False)
+        self._lock = asyncio.Lock()
+        self._loop = None
+
+    # --- abstract methods (keep for backward compatibility with scraper impl)
     @abstractmethod
     async def get_json_data(self, source_id: str) -> None: ...
     @abstractmethod
@@ -56,14 +105,7 @@ class StorageBackend(ABC):
     @abstractmethod
     async def save_classified(self, classified: list[tuple[str, list[str]]]) -> None: ...
 
-class SqlServerStorage(StorageBackend):
-    # ------------------------------------------------------------------ init
-    def __init__(self, connect_str: str): # , loop: asyncio.AbstractEventLoop | None = None):
-        self._conn_str = connect_str
-        self._conn = pyodbc.connect(connect_str, autocommit=False)
-        self._lock = asyncio.Lock()
-        self._loop = None # loop or asyncio.get_event_loop()
-
+class SqlServerScraping(StorageBackend):
     # ---------------------------------------------------------------- helpers
     def _run_sync(self, fn):
         loop = self._loop or asyncio.get_running_loop()
@@ -75,29 +117,34 @@ class SqlServerStorage(StorageBackend):
         async with self._lock:
             for attempt in range(2):
                 try:
-                    await self._run_sync(lambda: self._conn.execute(sql, *p).commit())
+                    def do():
+                        cur = self._conn.cursor()
+                        cur.execute(sql, *p)
+                        self._conn.commit()
+                    await self._run_sync(do)
                     return
                 except pyodbc.Error as e:
                     if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
-                        # Communication link failure / timeout → reconnect once
                         self._conn.close()
                         self._conn = pyodbc.connect(self._conn_str, autocommit=False)
                         continue
-                    raise
-
+                    raise e
 
     async def _fetch(self, sql: str, *p):
         async with self._lock:
             for attempt in range(2):
                 try:
-                    return await self._run_sync(lambda: self._conn.execute(sql, *p).fetchall())
+                    def do():
+                        cur = self._conn.cursor()
+                        cur.execute(sql, *p)
+                        return cur.fetchall()
+                    return await self._run_sync(do)
                 except pyodbc.Error as e:
                     if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
                         self._conn.close()
                         self._conn = pyodbc.connect(self._conn_str, autocommit=False)
                         continue
-                    raise
-
+                    raise e
 
     # ------------------------------------------------------------------- runs
     async def begin_run(self) -> int:
@@ -241,9 +288,9 @@ class SqlServerStorage(StorageBackend):
                     for u in urls:
                         cur.execute(sql, source_id, u)
                     self._conn.commit()
-                except Exception:
+                except Exception as e:
                     self._conn.rollback()
-                    raise
+                    raise e
             await self._run_sync(_bulk_insert)
     
     async def update_url_targets(self, source_id: str, good_urls: Sequence[str], bad_urls: Sequence[str]) -> None:
@@ -270,9 +317,9 @@ class SqlServerStorage(StorageBackend):
                             [(source_id, u) for u in bad_urls]
                         )
                     self._conn.commit()
-                except Exception:
+                except Exception as e:
                     self._conn.rollback()
-                    raise
+                    raise e
 
             await self._run_sync(_run)
 
@@ -364,9 +411,9 @@ class SqlServerStorage(StorageBackend):
                     cur.fast_executemany = True
                     cur.executemany(sql, [(*row, source_id) for row in tvp_rows])
                     self._conn.commit()
-                except Exception:
+                except Exception as e:
                     self._conn.rollback()
-                    raise
+                    raise e
 
             await self._run_sync(_bulk)
 
@@ -417,8 +464,8 @@ class SqlServerStorage(StorageBackend):
                     cur.fast_executemany = True
                     cur.executemany(sql, tvp_rows)
                     self._conn.commit()
-                except Exception:
+                except Exception as e:
                     self._conn.rollback()
-                    raise
+                    raise e
 
             await self._run_sync(_bulk)

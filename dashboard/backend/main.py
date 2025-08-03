@@ -2,11 +2,30 @@
 
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
-from . import database
+from .database import DashboardStorage
 
+app = FastAPI(title="Scraper Progress API")
+storage = DashboardStorage()
 
-app = FastAPI(title="Scraper Performance API")
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
 
+@app.get("/api/schools_status")
+def get_schools_status():
+    try:
+        rows = storage.fetch_progress_summary()
+        return {"data": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/school/{cleaned_name}/courses")
+def get_school_courses(cleaned_name: str, limit: int = Query(5, ge=1, le=50)):
+    try:
+        data = storage.fetch_course_preview(cleaned_name, limit=limit)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/performance")
 async def get_performance(
