@@ -385,15 +385,15 @@ async def main():
     target_sources = [
         src for src in all_sources
         if src.name in [
-            'clemson_university_undergraduate',
+            # 'clemson_university_undergraduate',
             'cal_poly_humboldt',
-            'fort_valley_state_university_undergraduate',
+            # 'fort_valley_state_university_undergraduate',
             'fort_valley_state_university_graduate',
             'san_diego_state_university',
-            'tennessee_state_university_undergraduate',
-            'appalachian_state_university_graduate',
-            'bowie_state_university_undergraduate',
-            'fayetteville_state_university_graduate',
+            # 'tennessee_state_university_undergraduate',
+            # 'appalachian_state_university_graduate',
+            # 'bowie_state_university_undergraduate',
+            # 'fayetteville_state_university_graduate',
             'western_michigan_university_undergraduate',
         ]
         # if src.name in yaml_names
