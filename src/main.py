@@ -384,17 +384,23 @@ async def main():
     # yaml_names = [s.name for s in yaml_sources]
     target_sources = [
         src for src in all_sources
-        if src.name in [
-            # 'clemson_university_undergraduate',
-            'cal_poly_humboldt',
-            # 'fort_valley_state_university_undergraduate',
-            'fort_valley_state_university_graduate',
-            'san_diego_state_university',
-            # 'tennessee_state_university_undergraduate',
-            # 'appalachian_state_university_graduate',
-            # 'bowie_state_university_undergraduate',
-            # 'fayetteville_state_university_graduate',
-            'western_michigan_university_undergraduate',
+        if src.cleaned_name in [
+            'cal poly humboldt',
+            'florida a&m university',
+            'furman university',
+            'howard university',
+            'purdue university',
+            'san diego state university',
+            'stony brook university',
+            'university of buffalo',
+            'university of delaware',
+
+
+
+            # 'cal_poly_humboldt',
+            # 'fort_valley_state_university_graduate',
+            # 'san_diego_state_university',
+            # 'western_michigan_university_undergraduate',
         ]
         # if src.name in yaml_names
     ]

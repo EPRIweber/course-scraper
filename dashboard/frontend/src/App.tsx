@@ -1,3 +1,5 @@
+// dashboard/frontend/src/App.tsx
+
 import { useEffect, useState, Fragment } from 'react';
 
 interface SchoolStatus {

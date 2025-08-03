@@ -47,7 +47,7 @@ class DashboardStorage:
     def fetch_progress_summary(self) -> List[Dict[str, Any]]:
         sql = (
             "SELECT school_name, schema_count, url_count, course_count, has_courses,"
-            " last_scrape_ts, summary_status, status_indicator"
+            " last_scrape_ts, summary_status, last_log, run_id"
             " FROM current_progress_summary"
         )
         return fetch_all_sync(self._conn_str, sql)
