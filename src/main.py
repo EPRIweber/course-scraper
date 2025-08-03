@@ -384,7 +384,7 @@ async def main():
     # yaml_names = [s.name for s in yaml_sources]
     target_sources = [
         src for src in all_sources
-        if src.cleaned_name in [
+        if src.clean_name in [
             # 'cal poly humboldt',
             'florida a&m university',
             'furman university',
