@@ -440,8 +440,8 @@ async def main():
             f"[{source.name}] running {fn.__name__} (slots left: {sem._value})"
         )
         await fn(run_id, source, storage)
-        
-    batch_size = 2
+    
+    batch_size = 1
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     storage.log(
         run_id,
