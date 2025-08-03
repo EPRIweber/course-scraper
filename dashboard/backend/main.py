@@ -3,6 +3,7 @@
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from .database import DashboardStorage
+import traceback
 
 app = FastAPI(title="Scraper Progress API")
 storage = DashboardStorage()
@@ -17,6 +18,8 @@ def get_schools_status():
         rows = storage.fetch_progress_summary()
         return {"data": rows}
     except Exception as e:
+        print("ERROR in schools_status:", e)
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/school/{cleaned_name}/courses")

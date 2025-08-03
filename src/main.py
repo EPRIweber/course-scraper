@@ -199,7 +199,7 @@ async def process_scrape(run_id: int, source: SourceConfig, storage: StorageBack
                 if result_errors:
                     joined_result_errors = "\n\n\n".join(result_errors)
                     # await _log(stage, f"WARNING: Found {len(result_errors)} errors: \n{joined_result_errors}")
-                    _log(stage, f"WARNING: Found {len(result_errors)}, successfully extracted {len(records)} records.")
+                    await _log(stage, f"WARNING: Found {len(result_errors)}, successfully extracted {len(records)} records.")
                 if not records:
                     await _log(stage, "ERROR: No records extracted from pages")
                     joined_result_errors = "\n\n\n".join(result_errors)
@@ -385,17 +385,17 @@ async def main():
     target_sources = [
         src for src in all_sources
         if src.cleaned_name in [
-            'cal poly humboldt',
+            # 'cal poly humboldt',
             'florida a&m university',
             'furman university',
             'howard university',
             'purdue university',
-            'san diego state university',
+            # 'san diego state university',
             'stony brook university',
             'university of buffalo',
             'university of delaware',
 
-
+            
 
             # 'cal_poly_humboldt',
             # 'fort_valley_state_university_graduate',
