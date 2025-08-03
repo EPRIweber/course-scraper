@@ -398,51 +398,17 @@ async def main():
     # yaml_names = [s.name for s in yaml_sources]
     target_sources = [
         src for src in all_sources
-        if src.clean_name in [
-            # 'university of florida'
-
-            'adams state university',
-            # 'bluefield state college',
-            'cal poly pomona',
-            'clemson university',
-            'elizabeth city state university',
-            'louisiana state university',
-            'morgan state university',
-            'tuskegee university',
-            'fort valley state university',
-            'cal poly humboldt',
-            'san diego state university',
-
-
-
-            # 'university of buffalo',
-            # 'adams state university',
-            # 'appalachian state university',
-            # 'bluefield state college',
-            # 'bowie state university',
-            # 'cal poly humboldt',
-            # 'cal poly pomona',
-            # 'cal state la',
-            # 'clemson university',
-            # 'elizabeth city state university',
-            # 'fayetteville state university',
-            # 'florida a&m university',
-            # 'fort valley state university',
-            # 'furman university',
-            # 'howard university',
-            # 'louisiana state university',
-            # 'morgan state university',
-            # 'north carolina a&t',
-            # 'purdue university',
-            # 'san diego state university',
-            # 'stony brook university',
-            # 'tennessee state university',
-            # 'texas tech',
-            # 'tuskegee university',
-            # 'university of buffalo',
-            # 'university of delaware',
-            # 'university of houston',
-            # 'western michigan university',
+        if src.name in [
+            'clemson_university_undergraduate',
+            'cal_poly_humboldt',
+            'fort_valley_state_university_undergraduate',
+            'fort_valley_state_university_graduate',
+            'san_diego_state_university',
+            'tennessee_state_university_undergraduate',
+            'appalachian_state_university_graduate',
+            'bowie_state_university_undergraduate',
+            'fayetteville_state_university_graduate',
+            'western_michigan_university_undergraduate',
         ]
         # if src.name in yaml_names
     ]
