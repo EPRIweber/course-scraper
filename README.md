@@ -41,10 +41,14 @@ This repository includes a minimal dashboard for monitoring scraper runs.
 
 ### Backend API
 
-The FastAPI service exposes `GET /api/performance` which reads from the
-`scraper_performance` view.  Configure database credentials with the same
-environment variables used by the scraper (`DB_SERVER`, `DB_NAME`, `DB_USER`,
-`DB_PASS`).
+The FastAPI service exposes several endpoints. Configure database credentials
+with the same environment variables used by the scraper (`DB_SERVER`,
+`DB_NAME`, `DB_USER`, `DB_PASS`).
+
+- `GET /api/performance` – metrics from the `scraper_performance` view.
+- `GET /api/schools_status` – progress rows from `current_progress_summary`.
+- `GET /api/school/{cleaned_name}/courses?limit=5` – preview sample of courses
+  for a school, deduplicated across sources.
 
 ```bash
 uvicorn dashboard.backend.main:app --reload

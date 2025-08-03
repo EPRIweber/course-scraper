@@ -1,128 +1,111 @@
-import { useEffect, useMemo, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { useEffect, useState, Fragment } from 'react';
 
-interface PerformanceRow {
-  source_name: string;
-  run_id: number;
-  extracted_count: number | null;
-  url_count: number | null;
-  slots_left: number | null;
-  scrape_seconds: number | null;
-  urls_per_second: number | null;
-  records_per_second: number | null;
-  inferred_max_concurrency: number | null;
-  courses_extracted_ts: string | null;
-  start_scrape_ts: string | null;
+interface SchoolStatus {
+  school_name: string;
+  schema_count: number;
+  url_count: number;
+  course_count: number;
+  has_courses: number;
+  last_scrape_ts: string | null;
+  summary_status: string | null;
+  status_indicator: string | null;
+}
+
+interface CoursePreview {
+  course_code: string | null;
+  course_title: string | null;
+  course_description_preview: string | null;
+  course_credits: string | null;
+  courses_crtd_dt: string | null;
+}
+
+interface CourseResponse {
+  school_name: string;
+  distinct_course_count: number;
+  sample_courses: CoursePreview[];
 }
 
 export default function App() {
-  const [rows, setRows] = useState<PerformanceRow[]>([]);
-  const [source, setSource] = useState('');
-  const [runId, setRunId] = useState('');
-  const [start, setStart] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<keyof PerformanceRow>('courses_extracted_ts');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [rows, setRows] = useState<SchoolStatus[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, CourseResponse>>({});
 
-  const fetchData = async () => {
-    const params = new URLSearchParams({ limit: '100', offset: '0' });
-    if (source) params.set('source_name', source);
-    if (runId) params.set('run_id', runId);
-    if (start) params.set('start_ts', start);
-    const res = await fetch(`/api/performance?${params.toString()}`);
+  const fetchStatus = async () => {
+    const res = await fetch('/api/schools_status');
     const json = await res.json();
     setRows(json.data || []);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchStatus();
+    const id = setInterval(fetchStatus, 15000);
+    return () => clearInterval(id);
+  }, []);
 
-  const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const aVal = a[sortField] ?? 0;
-      const bVal = b[sortField] ?? 0;
-      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [rows, sortField, sortDir]);
-
-  const chartData = selected ? rows.filter(r => r.source_name === selected) : [];
-  const slowThreshold = 1; // urls/sec
-
-  const handleSort = (field: keyof PerformanceRow) => {
-    if (sortField === field) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDir('desc');
+  const toggle = async (name: string) => {
+    if (expanded === name) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(name);
+    if (!previews[name]) {
+      const res = await fetch(`/api/school/${encodeURIComponent(name)}/courses?limit=5`);
+      const json = await res.json();
+      setPreviews(prev => ({ ...prev, [name]: json }));
     }
   };
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-2xl font-bold">Scraper Performance</h1>
-      <div className="flex gap-2 items-end flex-wrap">
-        <div>
-          <label className="block text-sm">Source</label>
-          <input value={source} onChange={e => setSource(e.target.value)} className="border p-1" />
-        </div>
-        <div>
-          <label className="block text-sm">Run ID</label>
-          <input value={runId} onChange={e => setRunId(e.target.value)} className="border p-1" />
-        </div>
-        <div>
-          <label className="block text-sm">After</label>
-          <input type="date" value={start} onChange={e => setStart(e.target.value)} className="border p-1" />
-        </div>
-        <button onClick={fetchData} className="bg-blue-500 text-white px-3 py-1 rounded">Apply</button>
-      </div>
+      <h1 className="text-2xl font-bold">School Scrape Status</h1>
       <table className="min-w-full text-sm">
         <thead>
           <tr className="bg-gray-100">
-            <th className="cursor-pointer" onClick={() => handleSort('source_name')}>Source</th>
-            <th className="cursor-pointer" onClick={() => handleSort('run_id')}>Run</th>
-            <th>Extracted</th>
-            <th>URLs</th>
-            <th>Slots Left</th>
-            <th className="cursor-pointer" onClick={() => handleSort('scrape_seconds')}>Seconds</th>
-            <th className="cursor-pointer" onClick={() => handleSort('urls_per_second')}>URLs/s</th>
-            <th className="cursor-pointer" onClick={() => handleSort('records_per_second')}>Records/s</th>
-            <th>Concurrency</th>
-            <th className="cursor-pointer" onClick={() => handleSort('courses_extracted_ts')}>Finished</th>
+            <th>School</th>
+            <th>Status</th>
+            <th>Indicator</th>
+            <th>Courses</th>
+            <th>Last Scrape</th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map(r => (
-            <tr key={`${r.source_name}-${r.run_id}`}
-                className={`border-b ${r.urls_per_second && r.urls_per_second < slowThreshold ? 'bg-red-100' : ''}`}
-                onClick={() => setSelected(r.source_name)}>
-              <td>{r.source_name}</td>
-              <td>{r.run_id}</td>
-              <td>{r.extracted_count}</td>
-              <td>{r.url_count}</td>
-              <td>{r.slots_left}</td>
-              <td>{r.scrape_seconds}</td>
-              <td>{r.urls_per_second?.toFixed(2)}</td>
-              <td>{r.records_per_second?.toFixed(2)}</td>
-              <td>{r.inferred_max_concurrency}</td>
-              <td>{r.courses_extracted_ts}</td>
-            </tr>
+          {rows.map(r => (
+            <Fragment key={r.school_name}>
+              <tr className="border-b cursor-pointer" onClick={() => toggle(r.school_name)}>
+                <td>{r.school_name}</td>
+                <td>{r.summary_status}</td>
+                <td>{r.status_indicator}</td>
+                <td>{r.course_count}</td>
+                <td>{r.last_scrape_ts}</td>
+              </tr>
+              {expanded === r.school_name && previews[r.school_name] && (
+                <tr className="bg-gray-50">
+                  <td colSpan={5}>
+                    <div className="p-2 space-y-2">
+                      <div>
+                        Total distinct courses: {previews[r.school_name].distinct_course_count}
+                      </div>
+                      <ul className="list-disc pl-5">
+                        {previews[r.school_name].sample_courses.map((c, idx) => (
+                          <li key={idx}>
+                            <strong>
+                              {c.course_code} {c.course_title}
+                            </strong>
+                            {c.course_description_preview && (
+                              <> - {c.course_description_preview}</>
+                            )}
+                            {c.course_credits && <> ({c.course_credits})</>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
-      {chartData.length > 0 && (
-        <div>
-          <h2 className="text-xl mt-4">Records per Second - {selected}</h2>
-          <LineChart width={600} height={300} data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="run_id" />
-            <YAxis />
-            <Tooltip />
-            <Line type="monotone" dataKey="records_per_second" stroke="#8884d8" />
-            <Line type="monotone" dataKey="urls_per_second" stroke="#82ca9d" />
-          </LineChart>
-        </div>
-      )}
     </div>
   );
 }
