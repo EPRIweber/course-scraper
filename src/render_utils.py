@@ -85,10 +85,13 @@ async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semapho
     return html
 
 
-async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore, *, delay: float = 1.0) -> str:
+async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore, *, delay: float = 1.0, default_playwright: bool = False) -> str:
     """Fetch page HTML with HTTPX, falling back to Playwright on errors."""
     try:
-        return await fetch_static(url, client, sem, delay=delay)
+        if default_playwright:
+            return await fetch_dynamic(url)
+        else:
+            return await fetch_static(url, client, sem, delay=delay)
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         code = getattr(e, "response", None) and e.response.status_code
         if isinstance(e, httpx.RequestError) or code in {403, 404, 429}:

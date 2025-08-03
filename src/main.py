@@ -424,6 +424,7 @@ async def main():
     # task_sources = []
 
     async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]], sem: asyncio.BoundedSemaphore):
+        logger.info(f"[{source.name}] running {fn.__name__} (slots left: {sem._value})")
         await storage.log(
             run_id,
             source.source_id,
@@ -432,7 +433,7 @@ async def main():
         )
         await fn(run_id, source, storage)
     
-    batch_size = 1
+    batch_size = 10
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     await storage.log(
         run_id,

@@ -174,7 +174,7 @@ async def _static_bfs_crawl(
         timeout=timeout,
         follow_redirects=True,
         verify=True,
-        limits=limits,
+        # limits=limits,
     ) as client:
         resp = await client.get(str(root_url))
         resp.raise_for_status()
@@ -190,7 +190,7 @@ async def _static_bfs_crawl(
 
                 try:
                     logger.debug(f"Crawling URL (depth {depth}): {url}")
-                    html = await fetch_with_fallback(url, client, sem, delay=delay)
+                    html = await fetch_with_fallback(url, client, sem, delay=delay, default_playwright=True)
                 except Exception:
                     # already logged in helper
                     continue
