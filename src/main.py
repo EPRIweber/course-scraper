@@ -386,8 +386,8 @@ async def main():
         src for src in all_sources
         if src.name in [
             # 'University of Buffalo graduate',
-            'University of Buffalo undergraduate',
-            'University of Delaware Undergraduate',
+            # 'University of Buffalo undergraduate',
+            # 'University of Delaware Undergraduate',
             'purdue_university',
             'Howard University',
             'Stony Brook University undergraduate',
@@ -521,7 +521,7 @@ async def main():
                     to_scrape.append(src)
 
             # Uncomment to skip scraping
-            continue
+            # continue
 
             if not to_scrape:
                 logger.info("No sources to scrape.")
