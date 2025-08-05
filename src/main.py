@@ -11,6 +11,7 @@ import csv
 import json
 import logging, logging.config
 import os
+from pprint import pprint
 from typing import Awaitable, Callable, Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
@@ -317,49 +318,63 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
 async def process_config(
     school: str,
     run_id: int,
-    storage: StorageBackend,
+    storage: StorageBackend = None,
 ) -> SourceConfig | None:
     """Generate config, upsert source, then run generate schema."""
-    async def _log(source_id: str, st: Stage, msg: str):
+    async def _log(src_id: str, stage: Stage, msg: str):
         logger.info(f"[{school}] {msg}")
-        await storage.log(run_id, source_id, int(st), msg)
+        if storage:
+            await storage.log(run_id, src_id, int(stage), msg)
     try:
-        await storage.log(
-            run_id=run_id,
+        await _log(
+            # run_id=run_id,
             src_id=None,
             stage=Stage.CRAWL,
             msg=f"Generating Source for {school}"
         )
-        src_cfg, root_usage, schema_usage = await discover_source_config(school)
-        src_cfg: SourceConfig
-        await storage.log(
-            run_id=run_id,
+        candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school)
+        print(f"""
+Root Errors:
+    {'\n\n'.join(root_errors)}
+
+Schema Errors:
+    {'\n\n'.join(schema_errors)}
+              """)
+        candidates: list[SourceConfig]
+        await _log(
+            # run_id=run_id,
             src_id=None,
             stage=Stage.CRAWL,
             msg=f"Source Generated for {school}"
         )
     except Exception as e:
-        await storage.log(
-            run_id=run_id,
+        await _log(
+            # run_id=run_id,
             src_id=None,
             stage=Stage.CRAWL,
             msg=f"Config generation failed for {school}: {e}"
         )
         raise Exception(f"Config generation failed for {school}: {e}")
+    uploaded = []
     try:
-        real_id = await storage.ensure_source(src_cfg)
-        src_cfg.source_id = real_id
+        for src_cfg in candidates:
+            if storage:
+                real_id = await storage.ensure_source(src_cfg)
+            else:
+                real_id = 'testing (no storage)'
+            src_cfg.source_id = real_id
+            uploaded.append(src_cfg)
     except Exception as e:
-        await storage.log(
-            run_id=run_id,
+        await _log(
+            # run_id=run_id,
             src_id=None,
             stage=Stage.CRAWL,
             msg=f"Failed to upsert source {school}: {e}"
         )
         raise Exception(f"Failed to upsert source {school}: {e}")
-        
+            
     await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
-    return src_cfg
+    return uploaded
 
 async def main():
     try:
@@ -575,6 +590,29 @@ async def main():
         logger.info("Run %d completed – lock released.", run_id)
 
 async def testing():
+
+    new_schools = []
+    with open('configs/new_schools.csv', 'r') as f:
+        csv_reader = csv.reader(f)
+        for r in csv_reader:
+            new_schools.append(r[0])
+
+    sources = []
+    exceptions = []
+    for school in new_schools:
+        try:
+            source = await process_config(school, 1000)
+            sources.append(source)
+        except Exception as e:
+            exceptions.append(e)
+            print(e)
+    await close_playwright()
+
+    for src in sources:
+        pprint(str(src) + "\n")
+
+        
+
     # test_source = config.sources[0]
     # print(f"generating test schema for {test_source.name}")
     # schema = None
@@ -588,12 +626,12 @@ async def testing():
     # urls = await crawl_and_collect_urls(test_source)
     # print(urls)
 
-    src_cfg, root_usage, schema_usage = await discover_source_config("oregon state university")
+    # src_cfg, root_usage, schema_usage = await discover_source_config("oregon state university")
 
-    print(
-f"""Source Config:\n{src_cfg}"""
-    )
+#     print(
+# f"""Source Config:\n{src_cfg}"""
+#     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    # asyncio.run(testing())
+    # asyncio.run(main())
+    asyncio.run(testing())

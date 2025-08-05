@@ -13,23 +13,43 @@ class CatalogRootPrompt(PromptBase):
     def system(self) -> str:
 
         return f"""
-You are an assistant designed to select the correct course catalog root URL for the school school {self.school}. 
+You are an assistant designed to identify the correct course catalog root URL for the school {self.school}. 
 The root URL should be a browsable and up-to-date web catalog listing courses, not an archive or PDF.
 The full description of these courses may be on the current page, or they may require an additional clicks to preview, but you MUST be able to see courses listed on the root page.
-Choose the best candidate from the information provided that is the best root page for scraping courses.
 
 General guide for identifying best root URL:
- - Select the “closest” endpoint (deepest common parent) from which you can click directly to all course listings (i.e. the page from which you can reach every other listing in the fewest clicks).
+ - If courses apprear on multiple pages, select the “closest” endpoint (deepest common parent) from which you can click directly to all course listings (i.e. the page from which you can reach every other listing in the fewest clicks).
  - Common root urls have pages such as '/courses', '/content', '/coursesaz', '/course-descriptions', etc.
  - If multiple catalog years are listed, select the newest URL which meets the above criteria for a root URL.
 
 ## **IMPORTANT**:
  - The provided pages are ordered based on likelihood for being the correct root URL.
- - Be sure to select the root URLs containing course description information, do NOT get confused by additional links to degree options, department information, or other data provided. It is ok if other information is accessible from the selected link, but the required course information MUST be accessible.
- - Avoid websites which look like the school's site, but are an online only versions of the school.
- - Reply **only** with JSON:""" +"""\n{
-        "root_url": "<url_link>"
-    }"""
+ - Be sure to select the root URLs containing either course description information or direct links to course description information (e aware that some links may be pruned from the HTML snippet provided). The required course information **MUST** be directly accessible from the root URL.
+ - **DO NOT GET CONFUSED** and return a page that may contain information about courses, but is not the actual course catalog with course descriptions. Here are some examples of this type of false positive:
+     - Degree Options
+     - Department Information
+     - Course Schedules
+     - General Bulletin
+ - Avoid websites which look like the school's site, but are an online only versions of the school.""" + """
+
+### Reply **only** with JSON in exactly one of these two forms:
+
+```json
+{"root_url": "<url_link>"}
+````
+
+– when you have positively identified a valid root URL with course descriptions,
+
+**OR**
+
+```json
+{"root_url": null}
+```
+
+– if no valid root URL can be determined.
+
+Do not include any other keys or commentary.
+"""
 
     def user(self) -> str:
         parts = [f"# School: {self.school}", "## Candidate pages:"]

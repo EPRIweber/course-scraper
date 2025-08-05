@@ -12,6 +12,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.utils import get_content_of_website_optimized
 from bs4 import BeautifulSoup
+from httpx import HTTPStatusError
 
 from crawl4ai import AsyncWebCrawler
 import httpx
@@ -94,32 +95,39 @@ async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, 
     # pages: List[dict] = []
     root_url_errors = []
     root_urls = []
+    seen = set()
 
     for hit in deduped:
         try:
-            html = await fetch_page(hit, default_playwright=True)
+            html = await fetch_page(hit, default_playwright=False)
             soup = BeautifulSoup(html, 'html.parser')
             # find links to course description pages
             course_descr_links: List[str] = []
             for a in soup.find_all('a', href=True):
                 text = a.get_text(strip=True).lower()
                 href = a['href']
-                if ('course' in text or 'description' in text or 'courses' in href.lower()) and 'archive' not in href.lower():
+                if ('course' in text or 'course' in href.lower()) and 'archive' not in href.lower():
                     full_url = urljoin(hit, href)
                     course_descr_links.append(full_url)
 
             to_fetch = [hit] + course_descr_links
 
+            fetch_deduped = list(OrderedDict.fromkeys(to_fetch))
+
             # fetch and append
-            pages = await fetch_snippets(to_fetch, return_html=True)
+            pages = await fetch_snippets(fetch_deduped, return_html=True)
 
             root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
+            print(f'LLM returned root URL: {root_url}')
             # verify valid root_url
             pr = urlparse(root_url)
             if not pr.scheme or not pr.netloc:
                 raise ValueError(f"Invalid root URL: {root_url}")
-
-            root_urls.append((root_url, root_usage))
+            
+            if root_url not in seen:
+                root_urls.append((root_url, root_usage))
+            else:
+                print("duplicate seen")
         except Exception as e:
             root_url_errors.append(f"Root Select Failed for Hit {hit}\n\nError: {e}")
     
@@ -132,26 +140,26 @@ async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, 
     for root_url_tuple in root_urls:
         try:
             root_url, root_usage = root_url_tuple
-            temp = SourceConfig(
-                source_id=f"TEMP_{school}",
-                name=school,
-                root_url=root_url,
-                schema_url=root_url,
-                # url_base_exclude=shared_domain,
-                crawl_depth=1
-            )
-            all_urls = await crawl_and_collect_urls(
-                temp,
-                make_root_filter=False,
-                # max_links_per_page=50
-            )
-            seen = set(); unique = []
-            for u in all_urls:
-                if u not in seen:
-                    seen.add(u); unique.append(u)
+            html = await fetch_page(root_url, default_playwright=True)
+            soup = BeautifulSoup(html, 'html.parser')
 
-            schema_pages = await fetch_snippets(unique)
+            # find links to course description pages
+            course_descr_links: List[str] = []
+            all_tags = soup.find_all('a', href=True)
+            all_urls = []
+            for a in all_tags:
+                text = a.get_text(strip=True).lower()
+                href = a['href']
+                full_path = urljoin(root_url, href)
+                all_urls.append(full_path)
+                if ('course' in text or 'course' in href.lower()) and 'archive' not in href.lower():
+                    course_descr_links.append(full_path)
+
+            combined = course_descr_links + all_urls
+            deduped = list(OrderedDict.fromkeys(combined))
+            schema_pages = await fetch_snippets(deduped)
             schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
+            print(f'LLM returned Schema URL: {schema_url}')
             if not schema_url:
                 raise f"No schema URL returned for {school}"
             if root_url and schema_url:
@@ -181,7 +189,7 @@ async def fetch_snippets(
     pages = []
     for url in urls:
         try:
-            html = await fetch_page(url, default_playwright=True)
+            html = await fetch_page(url, default_playwright=False)
             if return_html:
                 pruner = PruningContentFilter(threshold=0.2)
                 chunks = pruner.filter_content(html)
@@ -207,10 +215,20 @@ async def google_search(query: str, *, count: int = 3) -> List[str]:
     async with _GOOGLE_SEARCH_SEM:
         params = {"key": GOOGLE_API_KEY, "cx": GOOGLE_CX, "q": query, "num": count}
         async with httpx.AsyncClient(timeout=60000 * 10, verify=False) as client:
-            resp = await client.get(GOOGLE_CSE_ENDPOINT, params=params)
-            resp.raise_for_status()
+            try:
+                resp = await client.get(GOOGLE_CSE_ENDPOINT, params=params)
+                resp.raise_for_status()
+            except HTTPStatusError as e:
+                logger.warning("Google Search HTTP %s for query %r: %s", 
+                               e.response.status_code, query, e)
+                return []
             data = resp.json()
-        return [item["link"] for item in data.get("items", [])]
+        return [item["link"] for item in data.get("items", []) if item.get("link")]
+
+        #     resp = await client.get(GOOGLE_CSE_ENDPOINT, params=params)
+        #     resp.raise_for_status()
+        #     data = resp.json()
+        # return [item["link"] for item in data.get("items", [])]
 
 def filter_catalog_urls(urls: List[str]) -> List[str]:
     filtered = []
@@ -219,58 +237,6 @@ def filter_catalog_urls(urls: List[str]) -> List[str]:
         if ('pdf' not in lower): # any(k in lower for k in KEYWORDS) and ".edu" in lower and 
             filtered.append(url)
     return filtered
-
-# async def llm_select_root(school: str, pages: List[dict]) -> tuple[list[str], int]:
-#     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
-#     # print("⟳ pages passed into llm_select_root:", pages)
-#     logger.debug("REACHED llm_select_root")
-#     if not pages:
-#         logger.warning("No pages provided to llm_select_root")
-#         raise Exception(f"No pages provided to llm_select_root for {school}")
-#     prompt = CatalogRootPrompt(school, pages)
-#     llm = GemmaModel()
-#     llm.set_response_format({
-#         "type": "json_object",
-#         "json_schema": {
-#             "name": "catalog_selection",
-#             "description": "course_catalog_url_selecting",
-#             "valid_urls": {
-#                 "type": "array",
-#                 "items": {"type": "str"}
-#             },
-#             "strict": True
-#         }
-#     })
-#     try:
-#         sys_p = prompt.system()
-#         user_p = prompt.user()
-#         resp = llm.chat(
-#             [
-#                 {"role": "system", "content": sys_p},
-#                 {"role": "user", "content": user_p[:min(250_000, len(user_p))]},
-#             ]
-#         )
-#         # print(f"SYSTEM PROMPT:\n{sys_p}\n\n\u25B6 USER PROMPT:\n{user_p}\n")
-#         data = json.loads(resp["choices"][0]["message"]["content"])
-#         if isinstance(data, dict):
-#             try:
-#                 # print(data)
-#                 urls = data.get("valid_urls")
-#             except Exception as ex:
-#                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
-#                 raise ex
-#         else:
-#             logger.warning("Root LLM returned non-list data: %s", data)
-#             raise Exception("Root LLM returned non-list data: %s", data)
-#         # print(resp)
-#         prompt_t = resp.get("usage", {}).get("prompt_tokens")
-#         completion_t = resp.get("usage", {}).get("completion_tokens")
-
-#         return urls, prompt_t + completion_t
-#     except Exception as e:
-#         logger.warning(f"LLM root selection failed for {school}: {e}")
-#         raise e
-
 
 async def llm_select_root(school: str, pages: List[dict]) -> tuple[str, int]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
@@ -354,7 +320,7 @@ async def llm_select_schema(
         data = json.loads(resp["choices"][0]["message"]["content"])
         if isinstance(data, dict):
             try:
-                print(data)
+                # print(data)
                 url = data.get("schema_url")
             except Exception as ex:
                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
