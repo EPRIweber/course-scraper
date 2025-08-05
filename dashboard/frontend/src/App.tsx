@@ -69,7 +69,7 @@ export default function App() {
             className={`p-2 -mb-px ${active === v ? 'border-b-2 border-blue-500 font-semibold' : ''}`}
             onClick={() => setActive(v)}
           >
-            {v.replace(/_/g, ' ')}
+            {v.replace(/_/g, ' ').replace(/dashboard/g, '')}
           </button>
         ))}
       </div>
@@ -97,7 +97,7 @@ export default function App() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={headers.length || 1} className="p-4 text-center">
-                  No data
+                  Data Loading...
                 </td>
               </tr>
             )}

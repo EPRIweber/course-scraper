@@ -45,7 +45,7 @@ def list_views():
 @app.get("/api/view/{view_name}")
 def get_view(view_name: str, limit: int = Query(100, ge=1, le=1000)):
     try:
-        rows = storage.fetch_view_data(view_name, limit=limit)
+        rows = storage.fetch_view(view_name, limit=limit)
         return {"data": rows}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -53,26 +53,3 @@ def get_view(view_name: str, limit: int = Query(100, ge=1, le=1000)):
         print("ERROR in get_view:", e)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-# @app.get("/api/performance")
-# async def get_performance(
-#     limit: int = Query(100, ge=1, le=1000),
-#     offset: int = Query(0, ge=0),
-#     source_name: Optional[str] = None,
-#     run_id: Optional[int] = None,
-#     start_ts: Optional[str] = None,
-#     end_ts: Optional[str] = None,
-# ) -> List[dict]:
-#     """Return scraper performance metrics with optional filtering."""
-#     try:
-#         rows = await database.fetch_performance(
-#             limit=limit,
-#             offset=offset,
-#             source_name=source_name,
-#             run_id=run_id,
-#             start_ts=start_ts,
-#             end_ts=end_ts,
-#         )
-#         return {"data": rows, "limit": limit, "offset": offset}
-#     except Exception as exc:  # pragma: no cover - simple MVP error handling
-#         raise HTTPException(status_code=500, detail=str(exc))
