@@ -2,6 +2,7 @@
 
 import os
 import pyodbc
+import re
 from typing import Any, Dict, List, Optional
 from src.storage import build_conn_str, fetch_all_sync, fetch_one_sync
 
@@ -82,3 +83,18 @@ class DashboardStorage:
             "distinct_course_count": distinct_count,
             "sample_courses": courses,
         }
+
+    def list_views(self) -> List[str]:
+        sql = (
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.VIEWS "
+            "WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME NOT LIKE 'stg\\_%' ESCAPE '\\' "
+            "ORDER BY TABLE_NAME"
+        )
+        rows = fetch_all_sync(self._conn_str, sql)
+        return [row["TABLE_NAME"] for row in rows]
+
+    def fetch_view_data(self, view_name: str, limit: int = 100) -> List[Dict[str, Any]]:
+        if not re.fullmatch(r"[A-Za-z0-9_]+", view_name):
+            raise ValueError("Invalid view name")
+        sql = f"SELECT TOP (?) * FROM {view_name}"
+        return fetch_all_sync(self._conn_str, sql, (limit,))
