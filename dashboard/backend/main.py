@@ -5,22 +5,12 @@ from fastapi import FastAPI, HTTPException, Query
 from .database import DashboardStorage
 import traceback
 
-app = FastAPI(title="Scraper Progress API")
+app = FastAPI(title="Scraper Dashboard API")
 storage = DashboardStorage()
 
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
-
-@app.get("/api/schools_status")
-def get_schools_status():
-    try:
-        rows = storage.fetch_progress_summary()
-        return {"data": rows}
-    except Exception as e:
-        print("ERROR in schools_status:", e)
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/school/{cleaned_name}/courses")
 def get_school_courses(cleaned_name: str, limit: int = Query(5, ge=1, le=50)):
