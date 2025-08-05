@@ -5,12 +5,13 @@ import json
 import os
 import logging
 from typing import List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from crawl4ai import AsyncWebCrawler, BM25ContentFilter
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.utils import get_content_of_website_optimized
+from bs4 import BeautifulSoup
 
 from crawl4ai import AsyncWebCrawler
 import httpx
@@ -35,100 +36,131 @@ GOOGLE_CX = os.getenv("GOOGLE_CX")
 
 KEYWORDS = ["catalog", "bulletin", "course", "curriculum", "description", "current"]
 
-async def discover_source_config(name: str) -> tuple[SourceConfig, int, int]:
-    """Discover a ``SourceConfig`` for ``name``."""
-    root, schema, root_usage, schema_usage = await discover_catalog_urls(name)
+async def discover_source_config(name: str) -> tuple[list[SourceConfig], int, int, list[str], list[str]]:
+    # """Discover a ``SourceConfig`` for ``name``."""
+    total_root  = total_schema = 0
+    candidate_count = 0
+    final_candidates = []
+
+    candidates, root_errors, schema_errors = await discover_catalog_urls(name)
+    for candidate in candidates:
+        root, schema, root_usage, schema_usage = candidate
+
+        total_root += root_usage
+        total_schema += schema_usage
+
+        pr = urlparse(root)
+        ps = urlparse(schema)
+
+        shared_domain = f"{pr.scheme}://{pr.netloc}"
+        url_base_exclude = ""
+
+        # if they're on the same host but schema isn't a sub‑path of root
+        if pr.netloc == ps.netloc:
+            root_path = pr.path.rstrip("/") + "/"
+            if not ps.path.startswith(root_path):
+                url_base_exclude = shared_domain
+        
+        candidate_count += 1
+        final_candidates.append(SourceConfig(
+            source_id=f"LOCAL_{name}",
+            name=name + " src_" + str(candidate_count),
+            root_url=root,
+            schema_url=schema,
+            url_base_exclude=url_base_exclude
+        ))
     
-    pr = urlparse(root)
-    ps = urlparse(schema)
+    return final_candidates, total_root, total_schema, root_errors, schema_errors
 
-    shared_domain = f"{pr.scheme}://{pr.netloc}"
-    url_base_exclude = ""
-
-    # if they're on the same host but schema isn't a sub‑path of root
-    if pr.netloc == ps.netloc:
-        root_path = pr.path.rstrip("/") + "/"
-        if not ps.path.startswith(root_path):
-            url_base_exclude = shared_domain
-
-    return SourceConfig(
-        source_id=f"LOCAL_{name}",
-        name=name,
-        root_url=root,
-        schema_url=schema,
-        url_base_exclude=url_base_exclude
-    ), root_usage, schema_usage
-
-async def discover_catalog_urls(school: str) -> Tuple[str, str, int, int]:
+async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, int]], list[str], list[str]]:
     """Return root and schema URLs discovered for ``school``."""
-    query = f"{school} course description catalog bulletin site"
+    undergrad_query = f"{school} undergraduate course description catalog bulletin "
+    grad_query = f"{school} graduate course description catalog bulletin"
     try:
-        results = await google_search(query)
+        undergrad_results = await google_search(undergrad_query)
+        grad_results = await google_search(grad_query)
     except Exception as e:
         logger.warning("Search failed for %s", school)
         raise e
     
-    filtered = filter_catalog_urls(results)
-    combined = filtered + results
+    undergrad_filtered = filter_catalog_urls(undergrad_results)
+    grad_filtered = filter_catalog_urls(grad_results)
+    combined = undergrad_filtered + grad_filtered + undergrad_results + grad_results
     deduped = list(OrderedDict.fromkeys(combined))
-    top_hits = deduped[:3]
+
+    # pages = fetch_snippets(deduped)
 
     # 1) build a flat list of {url,snippet} dicts
-    pages: List[dict] = []
-    for hit in top_hits:
-        temp = SourceConfig(
-            source_id=f"TEMP_{school}",
-            name=school,
-            root_url=hit,
-            schema_url=hit,
-            crawl_depth=1,
-            url_exclude_patterns=["search", "archive"],
-        )
-        # crawl just one hop out from each hit
-        sub_urls = await crawl_and_collect_urls(
-            temp,
-            make_root_filter=False,
-            # max_links_per_page=10
-        )
-        # only keep “catalog”‑y ones
-        catalogs = filter_catalog_urls(sub_urls)
-        # build a small list you’ll actually fetch snippets for:
-        to_fetch = [hit] + catalogs[:4]   # 1 + up to 9 = 10 pages/site
+    # pages: List[dict] = []
+    root_url_errors = []
+    root_urls = []
 
-        # fetch and append
-        pages += await fetch_snippets(to_fetch, return_html=True)
+    for hit in deduped:
+        try:
+            html = await fetch_page(hit, default_playwright=True)
+            soup = BeautifulSoup(html, 'html.parser')
+            # find links to course description pages
+            course_descr_links: List[str] = []
+            for a in soup.find_all('a', href=True):
+                text = a.get_text(strip=True).lower()
+                href = a['href']
+                if ('course' in text or 'description' in text or 'courses' in href.lower()) and 'archive' not in href.lower():
+                    full_url = urljoin(hit, href)
+                    course_descr_links.append(full_url)
+
+            to_fetch = [hit] + course_descr_links
+
+            # fetch and append
+            pages = await fetch_snippets(to_fetch, return_html=True)
+
+            root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
+            # verify valid root_url
+            pr = urlparse(root_url)
+            if not pr.scheme or not pr.netloc:
+                raise ValueError(f"Invalid root URL: {root_url}")
+
+            root_urls.append((root_url, root_usage))
+        except Exception as e:
+            root_url_errors.append(f"Root Select Failed for Hit {hit}\n\nError: {e}")
     
-
-    root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
-    if not root_url:
-        raise Exception(f"No root URL found for {school}")
+    if not root_urls:
+        raise Exception(f'No root URLs found for {school}. Found the following errors while processing hits: \n\n{"\n\n".join(root_url_errors)}')
     
-    pr = urlparse(root_url)
-    shared_domain = f"{pr.scheme}://{pr.netloc}"
+    candidate_configs = []
+    schema_gen_errors = []
 
-    temp = SourceConfig(
-        source_id=f"TEMP_{school}",
-        name=school,
-        root_url=root_url,
-        schema_url=root_url,
-        # url_base_exclude=shared_domain,
-        crawl_depth=3
-    )
-    all_urls = await crawl_and_collect_urls(
-        temp,
-        make_root_filter=False,
-        # max_links_per_page=50
-    )
-    seen = set(); unique = []
-    for u in all_urls:
-        if u not in seen:
-            seen.add(u); unique.append(u)
+    for root_url_tuple in root_urls:
+        try:
+            root_url, root_usage = root_url_tuple
+            temp = SourceConfig(
+                source_id=f"TEMP_{school}",
+                name=school,
+                root_url=root_url,
+                schema_url=root_url,
+                # url_base_exclude=shared_domain,
+                crawl_depth=1
+            )
+            all_urls = await crawl_and_collect_urls(
+                temp,
+                make_root_filter=False,
+                # max_links_per_page=50
+            )
+            seen = set(); unique = []
+            for u in all_urls:
+                if u not in seen:
+                    seen.add(u); unique.append(u)
 
-    schema_pages = await fetch_snippets(unique[:min(120, len(unique))])
-    schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
-    if not schema_url:
-        raise Exception(f"No schema URL returned for {school}")
-    return root_url, schema_url, root_usage, schema_usage
+            schema_pages = await fetch_snippets(unique)
+            schema_url, schema_usage = await llm_select_schema(school, root_url, schema_pages) or (None, 0)
+            if not schema_url:
+                raise f"No schema URL returned for {school}"
+            if root_url and schema_url:
+                candidate_configs.append((root_url, schema_url, root_usage, schema_usage))
+        except Exception as e:
+            schema_gen_errors.append(f"Schema URL Finding Fail for {root_url}\n\nError: {e}")
+            
+    
+    return candidate_configs, root_url_errors, schema_gen_errors
 
 def make_markdown_run_cfg(timeout_s: int) -> CrawlerRunConfig:
     """Return a crawler run configuration for Markdown extraction."""
@@ -149,7 +181,7 @@ async def fetch_snippets(
     pages = []
     for url in urls:
         try:
-            html = await fetch_page(url)
+            html = await fetch_page(url, default_playwright=True)
             if return_html:
                 pruner = PruningContentFilter(threshold=0.2)
                 chunks = pruner.filter_content(html)
@@ -163,7 +195,7 @@ async def fetch_snippets(
             logger.debug("Failed to fetch %s for snippet: %s", url, e)
     return pages
 
-async def google_search(query: str, *, count: int = 4) -> List[str]:
+async def google_search(query: str, *, count: int = 3) -> List[str]:
     """Return a list of result URLs from Google Programmable Search."""
     if not GOOGLE_API_KEY or not GOOGLE_CX:
         raise RuntimeError(
@@ -184,9 +216,61 @@ def filter_catalog_urls(urls: List[str]) -> List[str]:
     filtered = []
     for url in urls:
         lower = url.lower()
-        if any(k in lower for k in KEYWORDS) and ".edu" in lower and ('pdf' not in lower):
+        if ('pdf' not in lower): # any(k in lower for k in KEYWORDS) and ".edu" in lower and 
             filtered.append(url)
     return filtered
+
+# async def llm_select_root(school: str, pages: List[dict]) -> tuple[list[str], int]:
+#     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
+#     # print("⟳ pages passed into llm_select_root:", pages)
+#     logger.debug("REACHED llm_select_root")
+#     if not pages:
+#         logger.warning("No pages provided to llm_select_root")
+#         raise Exception(f"No pages provided to llm_select_root for {school}")
+#     prompt = CatalogRootPrompt(school, pages)
+#     llm = GemmaModel()
+#     llm.set_response_format({
+#         "type": "json_object",
+#         "json_schema": {
+#             "name": "catalog_selection",
+#             "description": "course_catalog_url_selecting",
+#             "valid_urls": {
+#                 "type": "array",
+#                 "items": {"type": "str"}
+#             },
+#             "strict": True
+#         }
+#     })
+#     try:
+#         sys_p = prompt.system()
+#         user_p = prompt.user()
+#         resp = llm.chat(
+#             [
+#                 {"role": "system", "content": sys_p},
+#                 {"role": "user", "content": user_p[:min(250_000, len(user_p))]},
+#             ]
+#         )
+#         # print(f"SYSTEM PROMPT:\n{sys_p}\n\n\u25B6 USER PROMPT:\n{user_p}\n")
+#         data = json.loads(resp["choices"][0]["message"]["content"])
+#         if isinstance(data, dict):
+#             try:
+#                 # print(data)
+#                 urls = data.get("valid_urls")
+#             except Exception as ex:
+#                 logger.warning(f"Failed to load URL from LLM response, instead received: {data}")
+#                 raise ex
+#         else:
+#             logger.warning("Root LLM returned non-list data: %s", data)
+#             raise Exception("Root LLM returned non-list data: %s", data)
+#         # print(resp)
+#         prompt_t = resp.get("usage", {}).get("prompt_tokens")
+#         completion_t = resp.get("usage", {}).get("completion_tokens")
+
+#         return urls, prompt_t + completion_t
+#     except Exception as e:
+#         logger.warning(f"LLM root selection failed for {school}: {e}")
+#         raise e
+
 
 async def llm_select_root(school: str, pages: List[dict]) -> tuple[str, int]:
     """Use the LLM to choose the best root URL from pre-fetched ``pages``."""
@@ -200,8 +284,8 @@ async def llm_select_root(school: str, pages: List[dict]) -> tuple[str, int]:
     llm.set_response_format({
         "type": "json_object",
         "json_schema": {
-            "name": "CourseExtractionSchema",
-            "description": "CourseExtractionSchema",
+            "name": "catalog_selection",
+            "description": "course_catalog_url_selecting",
             "root_url": {
                 "type": "string"
             },
@@ -232,6 +316,7 @@ async def llm_select_root(school: str, pages: List[dict]) -> tuple[str, int]:
         # print(resp)
         prompt_t = resp.get("usage", {}).get("prompt_tokens")
         completion_t = resp.get("usage", {}).get("completion_tokens")
+
 
         return url, prompt_t + completion_t
     except Exception as e:

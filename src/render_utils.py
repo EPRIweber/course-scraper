@@ -105,8 +105,8 @@ async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.
         raise
 
 
-async def fetch_page(url: str, *, timeout: int = 60000 * 10, delay: float = 1.0) -> str:
+async def fetch_page(url: str, *, timeout: int = 60000 * 10, delay: float = 1.0, default_playwright: bool = False) -> str:
     """Fetch ``url`` with fallback, creating a temporary HTTPX client."""
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         sem = asyncio.Semaphore(1)
-        return await fetch_with_fallback(url, client, sem, delay=delay)
+        return await fetch_with_fallback(url, client, sem, delay=delay, default_playwright=default_playwright)

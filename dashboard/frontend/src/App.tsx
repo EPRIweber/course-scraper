@@ -1,6 +1,9 @@
 // dashboard/frontend/src/App.tsx
 
 import { useEffect, useState, Fragment } from 'react';
+import React from 'react';
+import GridView from './components/GridView';
+
 
 type JsonObject = Record<string, any>;
 
@@ -27,6 +30,9 @@ export default function App() {
   // for the course preview:
   const [expandedName, setExpandedName] = useState<string | null>(null);
   const [previews, setPreviews] = useState<Record<string, CourseResponse>>({});
+
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
 
   // load list of views
   useEffect(() => {
@@ -90,7 +96,30 @@ export default function App() {
       }
     }
   };
-return (
+
+  // ─── handle click on the row‐number cell ────────────────────────────────────
+  const handleRowSelect = (
+    e: React.MouseEvent<HTMLTableCellElement, MouseEvent>,
+    index: number
+  ) => {
+    // prevent the row‐click expansion handler
+    e.stopPropagation();
+
+    if (e.shiftKey && lastSelectedIndex !== null) {
+      // select every index between lastSelectedIndex and this one
+      const start = Math.min(lastSelectedIndex, index);
+      const end   = Math.max(lastSelectedIndex, index);
+      const range = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+      setSelectedRows(prev =>
+        Array.from(new Set([...prev, ...range]))
+      );
+    } else {
+      // single‐row select
+      setSelectedRows([index]);
+    }
+    setLastSelectedIndex(index);
+  };
+  return (
     <div className="p-4 space-y-4">
       <h1 className="text-2xl font-bold">Database Views</h1>
       {error && (
@@ -118,79 +147,10 @@ return (
           </button>
         ))}
       </div>
-
-      {/* table */}
-      {activeView && (
-        <table className="min-w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-gray-100">
-              {headers.map(h => (
-                <th key={h} className="p-2 text-left">
-                  {h.replace(/_/g, ' ')}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const thisName = nameColumn ? String(r[nameColumn]) : null;
-              const isExpanded = thisName === expandedName;
-              return (
-                <Fragment key={i}>
-                  <tr
-                    className="border-b cursor-pointer hover:bg-gray-50"
-                    onClick={() => onRowClick(r)}
-                  >
-                    {headers.map(h => (
-                      <td key={h} className="p-2 align-top">
-                        {String(r[h] ?? '')}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* preview row */}
-                  {isExpanded && previews[thisName!] && (
-                    <tr className="bg-gray-50">
-                      <td colSpan={headers.length} className="p-2">
-                        <div className="space-y-2">
-                          <div>
-                            Total distinct courses:{' '}
-                            {previews[thisName!].distinct_course_count}
-                          </div>
-                          <ul className="list-disc pl-5">
-                            {previews[thisName!].sample_courses.map((c, idx) => (
-                              <li key={idx}>
-                                <strong>
-                                  {c.course_code} {c.course_title}
-                                </strong>
-                                {c.course_description_preview && (
-                                  <> – {c.course_description_preview}</>
-                                )}
-                                {c.course_credits && <> ({c.course_credits})</>}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-
-            {rows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={headers.length || 1}
-                  className="p-4 text-center"
-                >
-                  Data Loading…
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      )}
+    {activeView && (
+      <GridView rowData={rows} headers={headers} />
+    )}
+      
     </div>
   );
 }
