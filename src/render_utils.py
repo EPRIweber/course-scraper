@@ -7,6 +7,7 @@ from typing import Optional
 import httpx
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
+from crawl4ai import CrawlerRunConfig, VirtualScrollConfig
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,31 @@ async def close_playwright() -> None:
     if _strategy:
         await _strategy.close()
 
-
 async def fetch_dynamic(url: str) -> str:
-    """Render ``url`` using Playwright via Crawl4AI."""
-    logger.debug("Dynamic fetch for URL: %s", url)
+    """
+    Render ``url`` using Playwright via Crawl4AI with virtual-scroll enabled,
+    so that *all* links—even in client-rendered or windowed lists—end up in the HTML.
+    """
     crawler, _ = _get_playwright_crawler()
-    result = await crawler.arun(url=url)
+
+    # Configure Virtual Scroll to scroll the full page container ("body").
+    vs_config = VirtualScrollConfig(
+        container_selector="body",    # scroll the main viewport
+        scroll_count=30,              # number of scroll steps; bump if you're still missing items
+        scroll_by="page_height",      # scroll by the viewport height each time
+        wait_after_scroll=0.5         # half-second pause for content to render
+    )
+
+    run_cfg = CrawlerRunConfig(
+        wait_for="body",                 # don't grab HTML until <body> is loaded
+        virtual_scroll_config=vs_config  # hook in the virtual scroll behavior
+    )
+
+    result = await crawler.arun(url=url, run_config=run_cfg)
     html = result.html or ""
     if not html:
-        raise RuntimeError("Empty HTML from dynamic fetch")
+        raise RuntimeError(f"Empty HTML after virtual scrolling render of {url}")
     return html
-
 
 async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore, *, delay: float = 1.0) -> str:
     """Return HTML using ``client`` with retry/backoff on certain errors."""

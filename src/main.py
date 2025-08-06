@@ -319,7 +319,8 @@ async def process_config(
     school: str,
     run_id: int,
     storage: StorageBackend = None,
-) -> SourceConfig | None:
+    host: str = None
+) -> list[SourceConfig] | None:
     """Generate config, upsert source, then run generate schema."""
     async def _log(src_id: str, stage: Stage, msg: str):
         logger.info(f"[{school}] {msg}")
@@ -332,7 +333,7 @@ async def process_config(
             stage=Stage.CRAWL,
             msg=f"Generating Source for {school}"
         )
-        candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school)
+        candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
         print(f"""
 Root Errors:
     {'\n\n'.join(root_errors)}
@@ -392,9 +393,54 @@ async def main():
 
     logger.info("Run ID: %d", run_id)
 
+    async def _log(stage: Stage, msg: str, source_id: str = None,):
+        logger.info(f"[RUN {run_id}] {msg}")
+        if storage:
+            await storage.log(run_id, source_id, int(stage), msg)
+
+    
+    new_schools = []
+    with open('configs/new_schools.csv', 'r') as f:
+        csv_reader = csv.reader(f)
+        for r in csv_reader:
+            new_schools.append(r[0])
+    
+    source_rows = await storage.find_similar_sources(new_schools)
+    filtered_schools = []
+    duplicates = []
+    for r in source_rows:
+        if r[1]:
+            duplicates.append(r[0])
+        else:
+            filtered_schools.append(r[0])
+    
+    _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {', '.join(duplicates)}")
+
+    ipeds_rows = await storage.find_similar_ipeds(new_schools)
+    
+    task_sources = []
+    for school, ipeds_name, ipeds_host in ipeds_rows:
+        sources = await process_config(school, run_id, storage, host=ipeds_host)
+        task_sources.extend(sources)
+    
+    if not task_sources:
+        logger.info("No new sources to process.")
+        await storage.log(
+            run_id,
+            None,
+            Stage.CRAWL,
+            "No new sources to process."
+        )
+        return
+    
+    logger.info(f"Generated {len(task_sources)} new sources to process.")
+
+
+
+
     # sources: list[SourceConfig] = await storage.list_sources
     all_sources: list[SourceConfig] = await storage.get_tasks()
-    task_sources = all_sources
+    # task_sources = all_sources
     # yaml_sources: list[SourceConfig] = config.sources
     # yaml_names = [s.name for s in yaml_sources]
     target_sources = [
@@ -420,7 +466,7 @@ async def main():
         ]
         # if src.name in yaml_names
     ]
-    task_sources = target_sources
+    # task_sources = target_sources
 
     # print(len(task_sources), "sources to process")
 
@@ -448,7 +494,7 @@ async def main():
         )
         await fn(run_id, source, storage)
     
-    batch_size = 1
+    batch_size = len(task_sources)
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     await storage.log(
         run_id,
@@ -458,6 +504,12 @@ async def main():
     )
     
     try:
+            
+
+
+
+
+
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):
             await storage.log(
@@ -633,5 +685,5 @@ async def testing():
 #     )
 
 if __name__ == "__main__":
-    # asyncio.run(main())
-    asyncio.run(testing())
+    asyncio.run(main())
+    # asyncio.run(testing())

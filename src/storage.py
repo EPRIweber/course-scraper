@@ -82,6 +82,10 @@ class StorageBackend(ABC):
     async def list_distinct(self) -> list[tuple[str,str,str,str,str]]: ...
     @abstractmethod
     async def ensure_source(self, src_cfg: SourceConfig) -> str: ...
+    @abstractmethod
+    async def find_similar_sources(self, candidates: list[str]) -> list[Tuple[str,str]]: ...
+    @abstractmethod
+    async def find_similar_ipeds(self, candidates: list[str]) -> list[Tuple[str,str,str]]: ...
 
     @abstractmethod
     async def get_urls(self, source_id: str) -> List[str]: ...
@@ -157,6 +161,57 @@ class SqlServerScraping(StorageBackend):
     async def end_run(self, run_id: int):
         await self._exec(f"EXEC dbo.end_run ?", run_id)
 
+    async def find_similar_sources(self, candidates: list[str]) -> list[Tuple[str, str]]:
+        """
+        Call the find_similar_sources TVP proc to match each candidate name
+        against your `sources` table's cleaned_name.
+        Returns a list of SourceConfig with name=matched cleaned_name.
+        """
+        if not candidates:
+            return []
+
+        # 1) Build a VALUES clause like: ('Duke','NULL'),('Oregon State',NULL),...
+        #    source_base_url is not used here so we pass NULL.
+        vals = ",".join(
+            f"('{name}', NULL)" for name in candidates
+        )
+        sql = f"""
+        DECLARE @t source_tvp;
+        INSERT INTO @t (source_name, source_base_url)
+        VALUES {vals};
+        EXEC dbo.find_similar_sources @tvpData = @t;
+        """
+        rows = await self._fetch(sql)
+
+        results: list[SourceConfig] = []
+        for r in rows:
+            results.append((r.source_name, r.cleaned_name))
+        return results
+
+    async def find_similar_ipeds(self, candidates: list[str]) -> list[Tuple[str, str, str]]:
+        """
+        Call the find_similar_ipeds TVP proc to match each candidate name
+        against your `universities` table's instnm.
+        Returns a list of SourceConfig with name=instnm and root_url=uni_host.
+        """
+        if not candidates:
+            return []
+
+        vals = ",".join(
+            f"('{name}', NULL)" for name in candidates
+        )
+        sql = f"""
+        DECLARE @t source_tvp;
+        INSERT INTO @t (source_name, source_base_url)
+        VALUES {vals};
+        EXEC dbo.find_similar_ipeds @tvpData = @t;
+        """
+        rows = await self._fetch(sql)
+
+        results: list[str] = []
+        for r in rows:
+            results.append((r.source_name, r.instnm, r.uni_host))
+        return results
 
 
     # ------------------------------------------------------------- source meta

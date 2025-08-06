@@ -37,13 +37,13 @@ GOOGLE_CX = os.getenv("GOOGLE_CX")
 
 KEYWORDS = ["catalog", "bulletin", "course", "curriculum", "description", "current"]
 
-async def discover_source_config(name: str) -> tuple[list[SourceConfig], int, int, list[str], list[str]]:
+async def discover_source_config(name: str, host: str = None) -> tuple[list[SourceConfig], int, int, list[str], list[str]]:
     # """Discover a ``SourceConfig`` for ``name``."""
     total_root  = total_schema = 0
     candidate_count = 0
     final_candidates = []
 
-    candidates, root_errors, schema_errors = await discover_catalog_urls(name)
+    candidates, root_errors, schema_errors = await discover_catalog_urls(name, host)
     for candidate in candidates:
         root, schema, root_usage, schema_usage = candidate
 
@@ -73,9 +73,9 @@ async def discover_source_config(name: str) -> tuple[list[SourceConfig], int, in
     
     return final_candidates, total_root, total_schema, root_errors, schema_errors
 
-async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, int]], list[str], list[str]]:
+async def discover_catalog_urls(school: str, host = None) -> Tuple[list[Tuple[str, str, int, int]], list[str], list[str]]:
     """Return root and schema URLs discovered for ``school``."""
-    undergrad_query = f"{school} undergraduate course description catalog bulletin "
+    undergrad_query = f"{school} undergraduate course description catalog bulletin"
     grad_query = f"{school} graduate course description catalog bulletin"
     try:
         undergrad_results = await google_search(undergrad_query)
@@ -99,24 +99,36 @@ async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, 
 
     for hit in deduped:
         try:
+            hit_domain = urlparse(hit).netloc
+            # print(f"Searching {hit} for root url...")
             html = await fetch_page(hit, default_playwright=False)
+            # print(f"HTML Recieved")
             soup = BeautifulSoup(html, 'html.parser')
             # find links to course description pages
             course_descr_links: List[str] = []
             for a in soup.find_all('a', href=True):
+                # print(f"Examining link: {a['href']}")
+                candidate_domain = urlparse(a['href']).netloc
+                if candidate_domain and candidate_domain != hit_domain:
+                    continue
                 text = a.get_text(strip=True).lower()
                 href = a['href']
-                if ('course' in text or 'course' in href.lower()) and 'archive' not in href.lower():
+                link = href.lower()
+                if ('course' in text or 'course' in link) and 'archive' not in link\
+                    and (host is None or host in link):
                     full_url = urljoin(hit, href)
                     course_descr_links.append(full_url)
 
             to_fetch = [hit] + course_descr_links
 
             fetch_deduped = list(OrderedDict.fromkeys(to_fetch))
-
+            
+            # print("Sending to fetch_snippets...")
             # fetch and append
             pages = await fetch_snippets(fetch_deduped, return_html=True)
+            # print("fetch_snippets returned")
 
+            # print("Sending to LLM...")
             root_url, root_usage = await llm_select_root(school, pages) or (None, 0)
             print(f'LLM returned root URL: {root_url}')
             # verify valid root_url
@@ -140,6 +152,7 @@ async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, 
     for root_url_tuple in root_urls:
         try:
             root_url, root_usage = root_url_tuple
+            root_domain = urlparse(root_url).netloc
             html = await fetch_page(root_url, default_playwright=True)
             soup = BeautifulSoup(html, 'html.parser')
 
@@ -148,11 +161,16 @@ async def discover_catalog_urls(school: str) -> Tuple[list[Tuple[str, str, int, 
             all_tags = soup.find_all('a', href=True)
             all_urls = []
             for a in all_tags:
+                candidate_domain = urlparse(a['href']).netloc
+                if candidate_domain and candidate_domain != root_domain:
+                    continue
                 text = a.get_text(strip=True).lower()
                 href = a['href']
                 full_path = urljoin(root_url, href)
                 all_urls.append(full_path)
-                if ('course' in text or 'course' in href.lower()) and 'archive' not in href.lower():
+                if ('course' in text or 'course' in href.lower()) \
+                    and 'archive' not in href.lower()\
+                    and 'about' not in href.lower():
                     course_descr_links.append(full_path)
 
             combined = course_descr_links + all_urls
@@ -189,7 +207,8 @@ async def fetch_snippets(
     pages = []
     for url in urls:
         try:
-            html = await fetch_page(url, default_playwright=False)
+            # print(f"Trying: {url}")
+            html = await fetch_page(url, default_playwright=True)
             if return_html:
                 pruner = PruningContentFilter(threshold=0.2)
                 chunks = pruner.filter_content(html)
