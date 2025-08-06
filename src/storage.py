@@ -54,6 +54,8 @@ def fetch_one_sync(conn_str: str, sql: str, params: Optional[Sequence[Any]] = No
             cur.execute(sql)
         return cur.fetchone()
 
+def _escape(name: str) -> str:
+    return name.replace("'", "''")
 
 class StorageBackend(ABC):
     """Abstract base class for storage backends."""
@@ -141,7 +143,14 @@ class SqlServerScraping(StorageBackend):
                     def do():
                         cur = self._conn.cursor()
                         cur.execute(sql, *p)
-                        return cur.fetchall()
+                        # Advance through any empty/non‐row result sets:
+                        while cur.description is None and cur.nextset():
+                            pass
+                        # If we now have a describable result set, fetch it:
+                        if cur.description:
+                            return cur.fetchall()
+                        # Otherwise return empty list
+                        return []
                     return await self._run_sync(do)
                 except pyodbc.Error as e:
                     if e.args[0] in ('08S01', '08003', 'HYT00') and attempt == 0:
@@ -169,11 +178,13 @@ class SqlServerScraping(StorageBackend):
         """
         if not candidates:
             return []
+        
 
         # 1) Build a VALUES clause like: ('Duke','NULL'),('Oregon State',NULL),...
         #    source_base_url is not used here so we pass NULL.
         vals = ",".join(
-            f"('{name}', NULL)" for name in candidates
+            f"(N'{_escape(name)}', NULL)"
+            for name in candidates
         )
         sql = f"""
         DECLARE @t source_tvp;
@@ -198,7 +209,8 @@ class SqlServerScraping(StorageBackend):
             return []
 
         vals = ",".join(
-            f"('{name}', NULL)" for name in candidates
+            f"(N'{_escape(name)}', NULL)"
+            for name in candidates
         )
         sql = f"""
         DECLARE @t source_tvp;

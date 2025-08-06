@@ -414,9 +414,9 @@ async def main():
         else:
             filtered_schools.append(r[0])
     
-    _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {', '.join(duplicates)}")
+    await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {', '.join(duplicates)}")
 
-    ipeds_rows = await storage.find_similar_ipeds(new_schools)
+    ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
     
     task_sources = []
     for school, ipeds_name, ipeds_host in ipeds_rows:
