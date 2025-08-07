@@ -311,6 +311,8 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
 
+
+
 # -----------------------------------------------------------------------------
 # Orchestration for a single school
 # -----------------------------------------------------------------------------
@@ -334,13 +336,16 @@ async def process_config(
             msg=f"Generating Source for {school}"
         )
         candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
-        print(f"""
+        _log(
+            None,
+            Stage.CRAWL,
+            msg = f"""
 Root Errors:
     {'\n\n'.join(root_errors)}
 
 Schema Errors:
-    {'\n\n'.join(schema_errors)}
-              """)
+    {'\n\n'.join(schema_errors)}"""
+        )
         candidates: list[SourceConfig]
         await _log(
             # run_id=run_id,
@@ -420,8 +425,16 @@ async def main():
     
     task_sources = []
     for school, ipeds_name, ipeds_host in ipeds_rows:
-        sources = await process_config(school, run_id, storage, host=ipeds_host)
-        task_sources.extend(sources)
+        try:
+            sources = await process_config(school, run_id, storage, host=ipeds_host)
+            if sources:
+                task_sources.extend(sources)
+            else:
+                logger.warning(f"No sources generated for {school}")
+                await _log(Stage.CRAWL, f"No sources generated for {school}", None)
+        except Exception as e:
+            logger.error(f"Failed to process config for {school}: {e}")
+            await _log(Stage.CRAWL, f"Failed to process config for {school}: {e}", None)
     
     if not task_sources:
         logger.info("No new sources to process.")
@@ -685,5 +698,5 @@ async def testing():
 #     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
-    # asyncio.run(testing())
+    # asyncio.run(main())
+    asyncio.run(testing())

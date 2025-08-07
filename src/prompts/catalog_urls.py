@@ -13,14 +13,16 @@ class CatalogRootPrompt(PromptBase):
     def system(self) -> str:
 
         return f"""
-You are an assistant designed to identify the correct course catalog root URL for the school {self.school}. 
-The root URL should be a browsable and up-to-date web catalog listing courses, not an archive or PDF.
-The full description of these courses may be on the current page, or they may require an additional clicks to preview, but you MUST be able to see courses listed on the root page.
+You are an assistant designed to identify the correct course catalog root URL(s) for the school {self.school}. 
+A root URL should be either a browsable webpage or PDF catalog link containing up-to-date listing courses information. Avoid archive records always selecting the most up-to-date record, closest to the year 2025-2026.
+The full description of these courses may be on the current page, or they may require an additional clicks to the individual course preview, but you MUST be able to see either courses listed or direct links to where courses are listed on the root page.
+If only a PDF is available, return the PDF link(s).
 
 General guide for identifying best root URL:
- - If courses apprear on multiple pages, select the “closest” endpoint (deepest common parent) from which you can click directly to all course listings (i.e. the page from which you can reach every other listing in the fewest clicks).
+ - If courses appear on multiple pages, select the “closest” endpoint (deepest common parent) from which you can click directly to all course listings (i.e. the page from which you can reach every other listing in the fewest clicks).
+ - If there are separate pages for undergraduate vs graduate catalogs, then return both links as a list. Same for if there are multiple graduate vs undergraduate catalogs.
  - Common root urls have pages such as '/courses', '/content', '/coursesaz', '/course-descriptions', etc.
- - If multiple catalog years are listed, select the newest URL which meets the above criteria for a root URL.
+ - If multiple catalog years are listed, select the newest URL(s) which meets the above criteria.
 
 ## **IMPORTANT**:
  - The provided pages are ordered based on likelihood for being the correct root URL.
@@ -30,23 +32,53 @@ General guide for identifying best root URL:
      - Department Information
      - Course Schedules
      - General Bulletin
+     - Links to other schools (not {self.school})
  - Avoid websites which look like the school's site, but are an online only versions of the school.""" + """
 
-### Reply **only** with JSON in exactly one of these two forms:
+ 
+### Reply **only** with JSON in exactly one of these three forms:
+
+ 1. **If the catalog is a standard HTML page**, and you can see course listings there:
 
 ```json
-{"root_url": "<url_link>"}
-````
-
-– when you have positively identified a valid root URL with course descriptions,
-
-**OR**
-
-```json
-{"root_url": null}
+{
+    "root_url": {
+        "links": [
+            "<url_link>",
+            ... // Additional links if needed
+        ],
+        "pdf_flag": false
+    }
+}
 ```
 
-– if no valid root URL can be determined.
+ 2. **If the “root” is actually a PDF catalog**, list its URL(s) and set the flag:
+
+ 
+```json
+{
+    "root_url": {
+        "links": [
+            "<pdf_link>",
+            ... // Additional links if needed
+        ],
+        "pdf_flag": true
+    }
+}
+```
+
+ 3. **If no valid root URL can be determined**, list no URLs
+
+```json
+{
+    "root_url": {
+        "links": [],
+        "pdf_flag": false
+    }
+}
+```
+
+– .
 
 Do not include any other keys or commentary.
 """
