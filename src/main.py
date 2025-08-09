@@ -419,7 +419,9 @@ async def main():
             else:
                 filtered_schools.append(r[0])
         formatted_dupes = ', '.join(duplicates)
+        formatted_filtered = ', '.join(filtered_schools)
         await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {formatted_dupes}")
+        await _log(Stage.CRAWL, f"Found {len(filtered_schools)} filtered schools after deduping: {formatted_filtered}")
 
         ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
 
