@@ -192,7 +192,7 @@ async def discover_catalog_urls(
             max_depth = 100  # keep your previous behavior for MC depth
             break  # short-circuit: MC gives everything we need
         else:
-          pass
+          continue  # skip non-MC for now
         # --- Non-MC path (unchanged behavior except usage now totals) ---
         course_descr_links: list[str] = []
         hit_domain = urlparse(hit).netloc
@@ -368,6 +368,40 @@ async def process_modern_campus(
       await page.wait_for_load_state('networkidle')
       await asyncio.sleep(0.5)
 
+  # NEW: robust year extraction and fallback selection helpers
+  import re
+  def _extract_years(label: str) -> list[int]:
+    """
+    Extract probable years from option text.
+    Handles '2024–2025', '2024-25', '2024/25', '2023-2024', etc.
+    Returns a list of 4-digit years; if only a two-digit second year, expand relative to the first.
+    """
+    t = (label or "").lower().replace('–', '-').replace('—', '-').replace('—', '-').replace(' to ', '-').replace('/', '-')
+    # Find all 4-digit years first
+    years = [int(y) for y in re.findall(r'\b(19|20)\d{2}\b', t)]
+    # Handle compact forms like '2024-25'
+    m = re.search(r'\b((19|20)\d{2})\s*-\s*(\d{2})\b', t)
+    if m:
+      y1 = int(m.group(1))
+      y2_two = int(m.group(3))
+      # Expand '25' to 2025 by decade alignment
+      y2 = (y1 // 100) * 100 + y2_two
+      if y2 < y1:
+        y2 += 100  # rare wrap
+      if y1 not in years:
+        years.append(y1)
+      if y2 not in years:
+        years.append(y2)
+    # Deduplicate & sort
+    years = sorted(set(years))
+    return years
+
+  def _is_undergrad(label: str) -> bool:
+    return 'undergraduate' in (label or '').lower()
+
+  def _is_grad(label: str) -> bool:
+    return 'graduate' in (label or '').lower()
+
   try:
     async with async_playwright() as pw:
       browser = await pw.chromium.launch(headless=True)
@@ -383,20 +417,39 @@ async def process_modern_campus(
         options = []
         root_errors.append(f"Failed to read #select_catalog options at {hit}: {e}")
 
-      def _year_match(txt: str) -> tuple[bool, bool]:
-        t = (txt or '').lower().replace('–','-').replace('—','-')
-        paired = ('2024' in t and ('2025' in t or '24-25' in t or '2024-2025' in t or '2024-25' in t))
-        solo24 = ('2024' in t)
-        return paired, solo24
+      # NEW: choose year group with fallback
+      # Build a structure: [(years_list, text, value)]
+      parsed = [(_extract_years(o.get('text','')), o.get('text',''), o.get('value','')) for o in options]
+      # Prefer any option where years include 2024 and 2025
+      group_2425 = [p for p in parsed if (2024 in p[0] and 2025 in p[0])]
+      # Else any option that includes 2024
+      group_24 = [p for p in parsed if 2024 in p[0]]
 
-      primary = [o for o in options if _year_match(o.get('text',''))[0]]
-      if not primary:
-        primary = [o for o in options if _year_match(o.get('text',''))[1]]
+      chosen_group = None
+      if group_2425:
+        chosen_group = group_2425
+      elif group_24:
+        chosen_group = group_24
+      else:
+        # Fallback: pick the most recent year found across all options
+        # Determine each option's "max year", pick the max over all, then keep that group.
+        with_max = [(max(yrs) if yrs else -1, txt, val, yrs) for (yrs, txt, val) in parsed]
+        most_recent = max((m for (m, _, _, _) in with_max), default=-1)
+        # If still nothing matched (no year at all), just keep all options (last resort)
+        if most_recent == -1:
+          chosen_group = parsed
+        else:
+          chosen_group = [(yrs, txt, val) for (yrs, txt, val) in parsed if (yrs and max(yrs) == most_recent)]
 
-      lower = [o for o in primary if 'undergraduate' in (o.get('text','').lower())]
-      upper = [o for o in primary if 'graduate' in (o.get('text','').lower())]
-      chosen = (lower + upper) if (lower and upper) else (primary[:1] if primary else [])
+      # Within chosen year group, if both UG and GR are present, select both types; else select all in the group.
+      lower = [dict(value=val, text=txt) for (yrs, txt, val) in chosen_group if _is_undergrad(txt)]
+      upper = [dict(value=val, text=txt) for (yrs, txt, val) in chosen_group if _is_grad(txt)]
+      if lower and upper:
+        chosen = lower + upper
+      else:
+        chosen = [dict(value=val, text=txt) for (yrs, txt, val) in chosen_group]
 
+      # Collect candidate root links
       root_links: list[str] = []
       if chosen:
         for opt in chosen:
@@ -410,6 +463,7 @@ async def process_modern_campus(
 
       root_links = list(OrderedDict.fromkeys(root_links))
 
+      # For each root, find schema_url via showCourse/preview_course_nopop
       for root_url in root_links:
         try:
           await page.goto(root_url, wait_until='networkidle')
@@ -444,7 +498,6 @@ async def process_modern_campus(
     root_errors.append(f"Modern Campus processing failed for {hit}: {e}")
 
   return candidate_configs, root_errors, schema_errors, pdf_configs
-
 
 # --- Helpers -----------------------------------------------------------------
 async def fetch_snippets(urls: List[str], return_html: Optional[bool] = False) -> List[dict]:
