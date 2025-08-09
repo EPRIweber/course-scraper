@@ -222,7 +222,7 @@ class SqlServerScraping(StorageBackend):
 
         results: list[str] = []
         for r in rows:
-            results.append((r.source_name, r.instnm, r.uni_host))
+            results.append((r.source_name, r.uni_host))
         return results
 
 

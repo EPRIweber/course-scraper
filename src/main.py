@@ -419,13 +419,26 @@ async def main():
     await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {', '.join(duplicates)}")
 
     ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
+
+    """
+    Will be multiple ipeds_hosts per each school, use dict of filtered_schools to keep track of if school has valid source.
+    If school has valid source, skip processing.
+    """
+
+    school_complete = {}
+    for school in filtered_schools:
+        school_complete[school] = False
     
     task_sources = []
-    for school, ipeds_name, ipeds_host in ipeds_rows:
+    for school, ipeds_host in ipeds_rows:
+        if school_complete.get(school):
+            await _log(Stage.CRAWL, f"Skipping {school} as it already has a valid source")
+            continue
         try:
             sources = await process_config(school, run_id, storage, host=ipeds_host)
             if sources:
                 task_sources.extend(sources)
+                school_complete[school] = True
             else:
                 logger.warning(f"No sources generated for {school}")
                 await _log(Stage.CRAWL, f"No sources generated for {school}", None)
@@ -441,6 +454,10 @@ async def main():
             Stage.CRAWL,
             "No new sources to process."
         )
+        try:
+            await close_playwright()
+        finally:
+            await storage.end_run(run_id)
         return
     
     logger.info(f"Generated {len(task_sources)} new sources to process.")
