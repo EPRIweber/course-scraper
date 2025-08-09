@@ -311,12 +311,6 @@ async def process_classify(run_id: int, source: SourceConfig, storage: StorageBa
         await _log(stage, f"FAILED: {exc}")
         logger.exception(exc)
 
-
-
-# -----------------------------------------------------------------------------
-# Orchestration for a single school
-# -----------------------------------------------------------------------------
-
 async def process_config(
     school: str,
     run_id: int,
@@ -324,6 +318,9 @@ async def process_config(
     host: str = None
 ) -> list[SourceConfig] | None:
     """Generate config, upsert source, then run generate schema."""
+
+    # candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
+
     async def _log(src_id: str, stage: Stage, msg: str):
         logger.info(f"[{school}] {msg}")
         if storage:
@@ -336,7 +333,7 @@ async def process_config(
             msg=f"Generating Source for {school}"
         )
         candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
-        _log(
+        await _log(
             None,
             Stage.CRAWL,
             msg = f"""
@@ -662,19 +659,43 @@ async def testing():
         for r in csv_reader:
             new_schools.append(r[0])
 
-    sources = []
-    exceptions = []
-    for school in new_schools:
-        try:
-            source = await process_config(school, 1000)
-            sources.append(source)
-        except Exception as e:
-            exceptions.append(e)
-            print(e)
-    await close_playwright()
+    new_schools = [
+('appalachian state university',    'appstate.edu/'),
+# ('bowie state university',	'bowiestate.edu/'),
+# ('california institute of technology',	'caltech.edu/')
+    ]
 
-    for src in sources:
-        pprint(str(src) + "\n")
+
+    results = []
+    exceptions = []
+    try:
+        for school, host in new_schools:
+            try:
+                candidates, _, _, root_errors, schema_errors = await discover_source_config(school, host)
+                # append a single tuple per school (don’t extend with a tuple)
+                results.append((school, candidates, root_errors, schema_errors))
+            except Exception as e:
+                exceptions.append((school, e))
+                print(f"[{school}] {e}")
+    finally:
+        # ensure playwright shuts down even if something raises
+        await close_playwright()
+
+    for school, sources, root_errors, schema_errors in results:
+        print(f"School: {school} ({len(sources)} sources)")
+        for src in sources:
+            pprint(str(src) + "\n")
+        for err in root_errors:
+            print(f"Root Error: {err}")
+        for err in schema_errors:
+            print(f"Schema Error: {err}")
+        print("\n\n\n\n")
+
+    if exceptions:
+        print("Printing test loop exceptions:")
+        for school, e in exceptions:
+            print(f"[{school}] {e}")
+
 
         
 

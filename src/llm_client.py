@@ -66,7 +66,15 @@ class BaseLLMClient:
             return completion
         return completion.to_dict()
 
-
+class GPTModel(BaseLLMClient):
+    """vLLM-based GPT-OSS model client"""
+    
+    def __init__(self, api_key: Optional[str] = "None"):
+        super().__init__(
+            model="openai/gpt-oss-120b",
+            api_key=api_key,
+            api_base="http://epr-ai-lno-p01.epri.com:8001/v1"
+        )
 
 class GemmaModel(BaseLLMClient):
     """vLLM-based Gemma model client"""

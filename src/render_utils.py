@@ -99,29 +99,72 @@ async def fetch_static(url: str, client: httpx.AsyncClient, sem: asyncio.Semapho
     await asyncio.sleep(delay + random.random())
     return html
 
+def _looks_like_cloudflare(html: str) -> bool:
+    """Heuristic: detect Cloudflare interstitial/challenge pages."""
+    if not html:
+        return False
+    h = html.lower()
+    markers = (
+        "cloudflare.com",
+        "/cdn-cgi/",
+        "cf-chl-",
+        "cf-ray",
+        "cf-browser-verification",
+        "just a moment",
+        "attention required",
+        "utm_source=challenge",
+    )
+    return any(m in h for m in markers)
 
-async def fetch_with_fallback(url: str, client: httpx.AsyncClient, sem: asyncio.Semaphore, *, delay: float = 1.0, default_playwright: bool = False) -> str:
-    """Fetch page HTML with HTTPX, falling back to Playwright on errors."""
+async def fetch_with_fallback(
+    url: str,
+    client: httpx.AsyncClient,
+    sem: asyncio.Semaphore,
+    *,
+    delay: float = 1.0,
+    default_playwright: bool = False
+) -> str:
+    """
+    Fetch page HTML, defaulting to Playwright. If a Cloudflare interstitial is detected,
+    back off briefly and re-fetch via Playwright (up to two extra attempts).
+    If Playwright itself fails, fall back to static HTTPX (with its own backoff).
+    """
+    # --- 1) Try Playwright first ---
     try:
-        if default_playwright:
-            return await fetch_dynamic(url)
-        else:
-            return await fetch_static(url, client, sem, delay=delay)
-    except (httpx.RequestError, httpx.HTTPStatusError) as e:
-        code = getattr(e, "response", None) and e.response.status_code
-        if isinstance(e, httpx.RequestError) or code in {403, 404, 429}:
-            logger.warning("Falling back to Playwright for %s: %s", url, e)
-            try:
-                return await fetch_dynamic(url)
-            except Exception as de:
-                logger.error("Playwright fetch failed for %s: %s", url, de)
-        else:
-            logger.warning("Non-retryable HTTP error for %s: %s", url, e)
-        raise
+        html = await fetch_dynamic(url)
+    except Exception as e:
+        logger.warning("Playwright failed for %s (%s). Falling back to static HTTP.", url, e)
+        html = await fetch_static(url, client, sem, delay=delay)
+        # If static returns a CF interstitial, escalate back to Playwright once.
+        if _looks_like_cloudflare(html):
+            logger.info("Cloudflare detected after static fetch for %s; retrying with Playwright", url)
+            await asyncio.sleep(1.0 + random.random() * 0.5)
+            html = await fetch_dynamic(url)
+        return html
 
+    # --- 2) If Playwright succeeded but we hit CF, retry with small backoffs ---
+    if _looks_like_cloudflare(html):
+        logger.info("Cloudflare interstitial detected for %s; backing off and reloading via Playwright", url)
+        # First CF retry
+        await asyncio.sleep(1.0 + random.random() * 0.5)
+        html = await fetch_dynamic(url)
 
-async def fetch_page(url: str, *, timeout: int = 60000 * 10, delay: float = 1.0, default_playwright: bool = False) -> str:
-    """Fetch ``url`` with fallback, creating a temporary HTTPX client."""
+        # Second CF retry if needed
+        if _looks_like_cloudflare(html):
+            logger.info("Cloudflare still present for %s; retrying once more after short backoff", url)
+            await asyncio.sleep(2.0 + random.random() * 0.5)
+            html = await fetch_dynamic(url)
+
+    return html
+
+async def fetch_page(
+    url: str,
+    *,
+    timeout: int = 60000 * 10,
+    delay: float = 1.0,
+    default_playwright: bool = False
+) -> str:
+    """Fetch ``url`` using Playwright-first strategy with CF-aware backoff."""
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, verify=False) as client:
         sem = asyncio.Semaphore(1)
         return await fetch_with_fallback(url, client, sem, delay=delay, default_playwright=default_playwright)
