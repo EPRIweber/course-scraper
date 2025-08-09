@@ -504,7 +504,7 @@ async def main():
         )
         await fn(run_id, source, storage)
     
-    batch_size = len(task_sources)
+    batch_size = 1
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     await storage.log(
         run_id,
@@ -719,5 +719,5 @@ async def testing():
 #     )
 
 if __name__ == "__main__":
-    # asyncio.run(main())
-    asyncio.run(testing())
+    asyncio.run(main())
+    # asyncio.run(testing())
