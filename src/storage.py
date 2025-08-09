@@ -279,6 +279,10 @@ class SqlServerScraping(StorageBackend):
         sql = """
             SELECT DISTINCT s.*
             FROM sources AS s
+            LEFT JOIN courses AS c
+            ON s.source_id = c.course_source_id
+            WHERE c.course_id IS NULL
+            AND s.source_base_url IS LIKE '%catoid%'
         """
         
             # LEFT JOIN urls AS u
