@@ -368,33 +368,35 @@ async def process_modern_campus(
       await page.wait_for_load_state('networkidle')
       await asyncio.sleep(0.5)
 
-  # NEW: robust year extraction and fallback selection helpers
+  # --- helpers to normalize and pick exactly ONE year group ---
   import re
-  def _extract_years(label: str) -> list[int]:
+  def _year_key(label: str) -> Optional[Tuple[int, int]]:
     """
-    Extract probable years from option text.
-    Handles '2024–2025', '2024-25', '2024/25', '2023-2024', etc.
-    Returns a list of 4-digit years; if only a two-digit second year, expand relative to the first.
+    Normalize a year label into (start, end). Handles:
+      '2024–2025', '2024-25', '2024/25', '2023-2024', '2024', etc.
+    Returns None if no year found.
     """
-    t = (label or "").lower().replace('–', '-').replace('—', '-').replace('—', '-').replace(' to ', '-').replace('/', '-')
-    # Find all 4-digit years first
-    years = [int(y) for y in re.findall(r'\b(19|20)\d{2}\b', t)]
-    # Handle compact forms like '2024-25'
+    t = (label or "").lower().replace('–','-').replace('—','-').replace('/', '-').replace(' to ', '-')
+    # exact range YYYY-YYYY
+    m = re.search(r'\b((19|20)\d{2})\s*-\s*((19|20)\d{2})\b', t)
+    if m:
+      y1, y2 = int(m.group(1)), int(m.group(3))
+      return (y1, y2)
+    # compact range YYYY-YY
     m = re.search(r'\b((19|20)\d{2})\s*-\s*(\d{2})\b', t)
     if m:
       y1 = int(m.group(1))
       y2_two = int(m.group(3))
-      # Expand '25' to 2025 by decade alignment
       y2 = (y1 // 100) * 100 + y2_two
       if y2 < y1:
-        y2 += 100  # rare wrap
-      if y1 not in years:
-        years.append(y1)
-      if y2 not in years:
-        years.append(y2)
-    # Deduplicate & sort
-    years = sorted(set(years))
-    return years
+        y2 += 100
+      return (y1, y2)
+    # single year
+    m = re.search(r'\b((19|20)\d{2})\b', t)
+    if m:
+      y = int(m.group(1))
+      return (y, y)
+    return None
 
   def _is_undergrad(label: str) -> bool:
     return 'undergraduate' in (label or '').lower()
@@ -409,6 +411,7 @@ async def process_modern_campus(
       await page.goto(hit, wait_until='networkidle')
 
       try:
+        # Preserve option order; we will use the first target match by this order
         options = await page.eval_on_selector_all(
           '#select_catalog option',
           "els => els.map(o => ({value:o.value, text:(o.textContent||'').trim()}))",
@@ -417,53 +420,65 @@ async def process_modern_campus(
         options = []
         root_errors.append(f"Failed to read #select_catalog options at {hit}: {e}")
 
-      # NEW: choose year group with fallback
-      # Build a structure: [(years_list, text, value)]
-      parsed = [(_extract_years(o.get('text','')), o.get('text',''), o.get('value','')) for o in options]
-      # Prefer any option where years include 2024 and 2025
-      group_2425 = [p for p in parsed if (2024 in p[0] and 2025 in p[0])]
-      # Else any option that includes 2024
-      group_24 = [p for p in parsed if 2024 in p[0]]
+      # Build [(idx, key, text, value)]
+      parsed: list[Tuple[int, Optional[Tuple[int,int]], str, str]] = [
+        (i, _year_key(o.get('text','')), o.get('text',''), o.get('value','')) for i, o in enumerate(options)
+      ]
 
-      chosen_group = None
-      if group_2425:
-        chosen_group = group_2425
-      elif group_24:
-        chosen_group = group_24
-      else:
-        # Fallback: pick the most recent year found across all options
-        # Determine each option's "max year", pick the max over all, then keep that group.
-        with_max = [(max(yrs) if yrs else -1, txt, val, yrs) for (yrs, txt, val) in parsed]
-        most_recent = max((m for (m, _, _, _) in with_max), default=-1)
-        # If still nothing matched (no year at all), just keep all options (last resort)
-        if most_recent == -1:
-          chosen_group = parsed
+      # --- choose exactly ONE year key ---
+      # 1) first option in DOM order whose key == (2024,2025)
+      target_key: Optional[Tuple[int,int]] = None
+      for _, key, _, _ in parsed:
+        if key == (2024, 2025):
+          target_key = key
+          break
+      # 2) else first option in DOM order whose key includes 2024 (single or range)
+      if target_key is None:
+        for _, key, _, _ in parsed:
+          if key and (key[0] == 2024 or key[1] == 2024):
+            target_key = key
+            break
+      # 3) else fallback to the most recent year key present (by max(end_year)); pick the first such key in DOM order
+      if target_key is None:
+        # find the maximum end year across all keys
+        keys = [k for _, k, _, _ in parsed if k is not None]
+        if keys:
+          max_end = max(k[1] for k in keys)
+          # pick the first option in DOM order that has end == max_end
+          for _, key, _, _ in parsed:
+            if key and key[1] == max_end:
+              target_key = key
+              break
+
+      # If we still have no key, just don't select anything; fall back to scanning current page
+      chosen_opts: list[dict] = []
+      if target_key is not None:
+        # collect all options that share this exact key (i.e., same year group)
+        group = [dict(value=val, text=txt) for _, key, txt, val in parsed if key == target_key]
+        # within that group: if both UG & GR exist, keep both; else keep the first by DOM order
+        lower = [o for o in group if _is_undergrad(o['text'])]
+        upper = [o for o in group if _is_grad(o['text'])]
+        if lower and upper:
+          chosen_opts = lower + upper
         else:
-          chosen_group = [(yrs, txt, val) for (yrs, txt, val) in parsed if (yrs and max(yrs) == most_recent)]
+          chosen_opts = group[:1]
 
-      # Within chosen year group, if both UG and GR are present, select both types; else select all in the group.
-      lower = [dict(value=val, text=txt) for (yrs, txt, val) in chosen_group if _is_undergrad(txt)]
-      upper = [dict(value=val, text=txt) for (yrs, txt, val) in chosen_group if _is_grad(txt)]
-      if lower and upper:
-        chosen = lower + upper
-      else:
-        chosen = [dict(value=val, text=txt) for (yrs, txt, val) in chosen_group]
-
-      # Collect candidate root links
+      # Collect candidate root links from the chosen year ONLY
       root_links: list[str] = []
-      if chosen:
-        for opt in chosen:
+      if chosen_opts:
+        for opt in chosen_opts:
           try:
             await _safe_select(page, opt['value'])
             root_links.extend(await _extract_roots_from_dom(page, page.url, host))
           except Exception as e:
             root_errors.append(f"Failed selecting catalog '{opt}': {e}")
       else:
+        # No selectable options; scan current page anchors
         root_links.extend(await _extract_roots_from_dom(page, page.url, host))
 
       root_links = list(OrderedDict.fromkeys(root_links))
 
-      # For each root, find schema_url via showCourse/preview_course_nopop
+      # For each root, find schema_url via showCourse / preview_course_nopop.php
       for root_url in root_links:
         try:
           await page.goto(root_url, wait_until='networkidle')
@@ -481,7 +496,7 @@ async def process_modern_campus(
           if not schema_url:
             for a in anchors:
               href = a.get('href') or ''
-              if 'preview_course_nopop.php' in href.lower():
+              if 'preview_course_nopop.php' in (href or '').lower():
                 absu = a.get('abs') or ''
                 schema_url = absu or (href if urlparse(href).netloc else urljoin(root_url, href))
                 break
@@ -558,7 +573,11 @@ def filter_catalog_urls(urls: List[str], host: str | None = None) -> List[str]:
   for u in urls:
     low = (u or "").lower()
     if (host in low if host else True):
-      out.append(u)
+      if 'catoid' in low:
+        # move to front of list
+        out.insert(0, u)
+      else:
+        out.append(u)
   return out
 
 

@@ -677,7 +677,9 @@ async def testing():
             new_schools.append(r[0])
 
     new_schools = [
-('appalachian state university',    'appstate.edu/'),
+    ('Bethune-Cookman',	'cookman.edu/'),
+    ('Baldwin Wallace', 	'bw.edu/'),
+# ('appalachian state university',    'appstate.edu/'),
 # ('bowie state university',	'bowiestate.edu/'),
 # ('california institute of technology',	'caltech.edu/')
     ]
