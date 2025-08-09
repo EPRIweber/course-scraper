@@ -107,8 +107,9 @@ async def discover_catalog_urls(
   """
 
   queries = [
-    f"{school} undergraduate course description current catalog",
-    f"{school} graduate course description current catalog",
+    f"{school} course description current catalog",
+    # f"{school} undergraduate course description current catalog",
+    # f"{school} graduate course description current catalog",
   ]
 
   root_url_errors: list[str] = []
@@ -272,8 +273,9 @@ async def discover_catalog_urls(
 
   # Legacy final error behavior for non-MC path
   if not root_urls or not pdf_configs:
+    errors = '\n\n'.join(root_url_errors)
     raise Exception(
-      f"No root URLs for PDFs found for {school}. Found the following errors while processing hits: \n\n{'\n\n'.join(root_url_errors)}"
+      f"No root URLs for PDFs found for {school}. Found the following errors while processing hits: \n\n{errors}"
     )
 
   print(f"Attempting to find schma URLs for {len(root_urls)} root urls...")

@@ -282,7 +282,7 @@ class SqlServerScraping(StorageBackend):
             LEFT JOIN courses AS c
             ON s.source_id = c.course_source_id
             WHERE c.course_id IS NULL
-            AND s.source_base_url IS LIKE '%catoid%'
+            AND s.source_base_url LIKE '%catoid%'
         """
         
             # LEFT JOIN urls AS u

@@ -333,15 +333,17 @@ async def process_config(
             msg=f"Generating Source for {school}"
         )
         candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
+        formatted_root_errors = '\n\n'.join(root_errors)
+        formatted_schema_errors = '\n\n'.join(schema_errors)
         await _log(
             None,
             Stage.CRAWL,
             msg = f"""
 Root Errors:
-    {'\n\n'.join(root_errors)}
+    {formatted_root_errors}
 
 Schema Errors:
-    {'\n\n'.join(schema_errors)}"""
+    {formatted_schema_errors}"""
         )
         candidates: list[SourceConfig]
         await _log(
@@ -400,101 +402,101 @@ async def main():
         if storage:
             await storage.log(run_id, source_id, int(stage), msg)
 
-    # try:
-    #     new_schools = []
-    #     with open('configs/new_schools.csv', 'r') as f:
-    #         csv_reader = csv.reader(f)
-    #         for r in csv_reader:
-    #             new_schools.append(r[0])
+    try:
+        new_schools = []
+        with open('configs/new_schools.csv', 'r') as f:
+            csv_reader = csv.reader(f)
+            for r in csv_reader:
+                new_schools.append(r[0])
         
         
-    #     source_rows = await storage.find_similar_sources(new_schools)
-    #     filtered_schools = []
-    #     duplicates = []
-    #     for r in source_rows:
-    #         if r[1]:
-    #             duplicates.append(r[0])
-    #         else:
-    #             filtered_schools.append(r[0])
-        
-    #     await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {', '.join(duplicates)}")
+        source_rows = await storage.find_similar_sources(new_schools)
+        filtered_schools = []
+        duplicates = []
+        for r in source_rows:
+            if r[1]:
+                duplicates.append(r[0])
+            else:
+                filtered_schools.append(r[0])
+        formatted_dupes = ', '.join(duplicates)
+        await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {formatted_dupes}")
 
-    #     ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
+        ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
 
-    #     """
-    #     Will be multiple ipeds_hosts per each school, use dict of filtered_schools to keep track of if school has valid source.
-    #     If school has valid source, skip processing.
-    #     """
+        """
+        Will be multiple ipeds_hosts per each school, use dict of filtered_schools to keep track of if school has valid source.
+        If school has valid source, skip processing.
+        """
 
-    #     school_complete = {}
-    #     for school in filtered_schools:
-    #         school_complete[school] = False
+        school_complete = {}
+        for school in filtered_schools:
+            school_complete[school] = False
         
-    #     task_sources = []
-    #     for school, ipeds_host in ipeds_rows:
-    #         if school_complete.get(school):
-    #             await _log(Stage.CRAWL, f"Skipping {school} as it already has a valid source")
-    #             continue
-    #         try:
-    #             sources = await process_config(school, run_id, storage, host=ipeds_host)
-    #             if sources:
-    #                 task_sources.extend(sources)
-    #                 school_complete[school] = True
-    #             else:
-    #                 logger.warning(f"No sources generated for {school}")
-    #                 await _log(Stage.CRAWL, f"No sources generated for {school}", None)
-    #         except Exception as e:
-    #             logger.error(f"Failed to process config for {school}: {e}")
-    #             await _log(Stage.CRAWL, f"Failed to process config for {school}: {e}", None)
+        task_sources = []
+        for school, ipeds_host in ipeds_rows:
+            if school_complete.get(school):
+                await _log(Stage.CRAWL, f"Skipping {school} as it already has a valid source")
+                continue
+            try:
+                sources = await process_config(school, run_id, storage, host=ipeds_host)
+                if sources:
+                    task_sources.extend(sources)
+                    school_complete[school] = True
+                else:
+                    logger.warning(f"No sources generated for {school}")
+                    await _log(Stage.CRAWL, f"No sources generated for {school}", None)
+            except Exception as e:
+                logger.error(f"Failed to process config for {school}: {e}")
+                await _log(Stage.CRAWL, f"Failed to process config for {school}: {e}", None)
     
-    #     if not task_sources:
-    #         logger.info("No new sources to process.")
-    #         await storage.log(
-    #             run_id,
-    #             None,
-    #             Stage.CRAWL,
-    #             "No new sources to process."
-    #         )
-    # except Exception as e:
-    #     await _log(Stage.CRAWL, f"Failed to process new schools: {e}", None)
-    #     try:
-    #         await close_playwright()
-    #     finally:
-    #         await storage.end_run(run_id)
-    #     raise e
+        if not task_sources:
+            logger.info("No new sources to process.")
+            await storage.log(
+                run_id,
+                None,
+                Stage.CRAWL,
+                "No new sources to process."
+            )
+    except Exception as e:
+        await _log(Stage.CRAWL, f"Failed to process new schools: {e}", None)
+        try:
+            await close_playwright()
+        finally:
+            await storage.end_run(run_id)
+        raise e
     
-    # logger.info(f"Generated {len(task_sources)} new sources to process.")
+    logger.info(f"Generated {len(task_sources)} new sources to process.")
 
 
 
     # sources: list[SourceConfig] = await storage.list_sources
-    all_sources: list[SourceConfig] = await storage.get_tasks()
-    task_sources = all_sources
+    # all_sources: list[SourceConfig] = await storage.get_tasks()
+    # task_sources = all_sources
     # yaml_sources: list[SourceConfig] = config.sources
     # yaml_names = [s.name for s in yaml_sources]
-    target_sources = [
-        src for src in all_sources
-        if src.name in [
-            # 'University of Buffalo graduate',
-            # 'University of Buffalo undergraduate',
-            # 'University of Delaware Undergraduate',
-            'purdue_university',
-            'Howard University',
-            'Stony Brook University undergraduate',
-            'Florida A&M University',
-            'University of Delaware Graduate',
-            'Stony Brook University graduate',
-            'furman_university_graduate',
+    # target_sources = [
+    #     src for src in all_sources
+    #     if src.name in [
+    #         # 'University of Buffalo graduate',
+    #         # 'University of Buffalo undergraduate',
+    #         # 'University of Delaware Undergraduate',
+    #         'purdue_university',
+    #         'Howard University',
+    #         'Stony Brook University undergraduate',
+    #         'Florida A&M University',
+    #         'University of Delaware Graduate',
+    #         'Stony Brook University graduate',
+    #         'furman_university_graduate',
 
 
 
-            # 'cal_poly_humboldt',
-            # 'fort_valley_state_university_graduate',
-            # 'san_diego_state_university',
-            # 'western_michigan_university_undergraduate',
-        ]
-        # if src.name in yaml_names
-    ]
+    #         # 'cal_poly_humboldt',
+    #         # 'fort_valley_state_university_graduate',
+    #         # 'san_diego_state_university',
+    #         # 'western_michigan_university_undergraduate',
+    #     ]
+    #     # if src.name in yaml_names
+    # ]
     # task_sources = target_sources
 
     # print(len(task_sources), "sources to process")
