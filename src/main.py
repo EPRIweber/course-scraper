@@ -7,6 +7,7 @@ results.  Modify this file if you need to change the overall workflow.
 """
 
 import asyncio
+from collections import defaultdict
 import csv
 import json
 import logging, logging.config
@@ -332,13 +333,17 @@ async def process_config(
             stage=Stage.CRAWL,
             msg=f"Generating Source for {school}"
         )
-        candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
+        candidates, root_usage, schema_usage, root_errors, schema_errors, search_results  = await discover_source_config(school, host)
         formatted_root_errors = '\n\n'.join(root_errors)
         formatted_schema_errors = '\n\n'.join(schema_errors)
         await _log(
             None,
             Stage.CRAWL,
             msg = f"""
+Config gen completed for {school} with {len(candidates)} sources
+
+Search Results: {search_results}
+
 Root Errors:
     {formatted_root_errors}
 
@@ -346,12 +351,6 @@ Schema Errors:
     {formatted_schema_errors}"""
         )
         candidates: list[SourceConfig]
-        await _log(
-            # run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Source Generated for {school}"
-        )
     except Exception as e:
         await _log(
             # run_id=run_id,
@@ -411,6 +410,8 @@ async def main():
         
         
         source_rows = await storage.find_similar_sources(new_schools)
+        # for row in source_rows:
+        #     print(row)
         filtered_schools = []
         duplicates = []
         for r in source_rows:
@@ -435,12 +436,20 @@ async def main():
             school_complete[school] = False
         
         task_sources = []
+
+        attempts = defaultdict(int)
+        MAX_ATTEMPTS = 2
+
         for school, ipeds_host in ipeds_rows:
             if school_complete.get(school):
                 await _log(Stage.CRAWL, f"Skipping {school} as it already has a valid source")
                 continue
+            elif attempts[school] >= MAX_ATTEMPTS:
+                await _log(Stage.CRAWL, f'Skipping config gen for {school}, reached max attempts')
+                continue
             try:
                 sources = await process_config(school, run_id, storage, host=ipeds_host)
+                attempts[school] += 1
                 if sources:
                     task_sources.extend(sources)
                     school_complete[school] = True
@@ -448,6 +457,7 @@ async def main():
                     logger.warning(f"No sources generated for {school}")
                     await _log(Stage.CRAWL, f"No sources generated for {school}", None)
             except Exception as e:
+                attempts[school] += 1
                 logger.error(f"Failed to process config for {school}: {e}")
                 await _log(Stage.CRAWL, f"Failed to process config for {school}: {e}", None)
     
@@ -683,8 +693,8 @@ async def testing():
             new_schools.append(r[0])
 
     new_schools = [
-    ('Bethune-Cookman',	'cookman.edu/'),
-    ('Baldwin Wallace', 	'bw.edu/'),
+    # ('Bethune-Cookman',	'cookman.edu/'),
+    # ('Baldwin Wallace', 	'bw.edu/'),
 # ('appalachian state university',    'appstate.edu/'),
 # ('bowie state university',	'bowiestate.edu/'),
 # ('california institute of technology',	'caltech.edu/')

@@ -42,7 +42,7 @@ DEBUG = True
 
 
 # --- Public API ---------------------------------------------------------------
-async def discover_source_config(name: str, host: str | None = None) -> tuple[list[SourceConfig], int, int, list[str], list[str]]:
+async def discover_source_config(name: str, host: str | None = None) -> tuple[list[SourceConfig], int, int, list[str], list[str], list[str]]:
   """Discover one or more SourceConfig objects for the given school name.
 
   Returns (candidates, total_root_tokens, total_schema_tokens, root_errors, schema_errors).
@@ -52,7 +52,7 @@ async def discover_source_config(name: str, host: str | None = None) -> tuple[li
   final_candidates: list[SourceConfig] = []
 
   # NOTE: discover_catalog_urls now returns totals instead of per-config usage
-  candidates, root_errors, schema_errors, pdf_configs, total_root, total_schema, max_depth = await discover_catalog_urls(name, host)
+  candidates, root_errors, schema_errors, pdf_configs, total_root, total_schema, search_results, max_depth = await discover_catalog_urls(name, host)
 
   for root, schema in candidates:
     pr = urlparse(root)
@@ -92,13 +92,13 @@ async def discover_source_config(name: str, host: str | None = None) -> tuple[li
     )
     candidate_count += 1
 
-  return final_candidates, int(total_root or 0), int(total_schema or 0), root_errors, schema_errors
+  return final_candidates, int(total_root or 0), int(total_schema or 0), root_errors, schema_errors, search_results
 
 # --- Core discovery -----------------------------------------------------------
 async def discover_catalog_urls(
   school: str,
   host: str | None = None,
-) -> Tuple[list[Tuple[str, str]], list[str], list[str], list[Tuple[str, str]], int, int, Optional[int]]:
+) -> Tuple[list[Tuple[str, str]], list[str], list[str], list[Tuple[str, str]], int, int, list[str], Optional[int]]:
   """Return discovered candidate configs and error collections for `school`.
 
   Return shape:
@@ -269,7 +269,7 @@ async def discover_catalog_urls(
 
   if mc_found:
     print("Returning Early with Modern Campus Results")
-    return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, max_depth
+    return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, query_results, max_depth
 
   # Legacy final error behavior for non-MC path
   if not root_urls or not pdf_configs:
@@ -313,7 +313,7 @@ async def discover_catalog_urls(
       schema_gen_errors.append(f"Schema URL Finding Fail for {root_url}\n\nError: {e}")
       logger.debug("Schema selection failure for %s: %s", root_url, e)
 
-  return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, max_depth
+  return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, query_results, max_depth
 
 # --- Modern Campus flow -------------------------------------------------------
 async def process_modern_campus(
@@ -344,9 +344,19 @@ async def process_modern_campus(
       )
     except Exception:
       return []
-
+  
   async def _extract_roots_from_dom(page, current_url: str, host_filter: Optional[str]) -> list[str]:
     anchors = await _anchors_eval(page)
+
+    def _looks_mc_link(u: str) -> bool:
+      s = (u or "").lower()
+      return (
+        "content.php" in s or
+        "catoid=" in s or
+        "preview_course_nopop.php" in s or
+        "acalog" in s
+      )
+
     roots: list[str] = []
     for a in anchors:
       href = a.get('href') or ''
@@ -354,11 +364,19 @@ async def process_modern_campus(
       text = a.get('text') or ''
       if not href and not absu:
         continue
+
       link = absu or (href if urlparse(href).netloc else urljoin(current_url, href))
-      if host_filter and (host_filter not in (link or '').lower()):
-        continue
+
+      # RELAXED host filtering for Modern Campus targets
+      if host_filter and (host_filter.lower() not in (link or '').lower()):
+        # allow MC-shaped links even if host doesn't match (catalog subdomains, alias domains)
+        if not (_looks_mc_link(href) or _looks_mc_link(absu)):
+          continue
+
+      # keep simple text heuristics
       if ('course description' in text) or ('courses description' in text) or ('course' in text):
         roots.append(link)
+
     return list(OrderedDict.fromkeys(roots))
 
   async def _safe_select(page, value: str):
@@ -479,6 +497,11 @@ async def process_modern_campus(
         root_links.extend(await _extract_roots_from_dom(page, page.url, host))
 
       root_links = list(OrderedDict.fromkeys(root_links))
+
+      if not root_links:
+        alt = await _extract_roots_from_dom(page, page.url, None)
+        root_links = list(OrderedDict.fromkeys(alt))
+
 
       # For each root, find schema_url via showCourse / preview_course_nopop.php
       for root_url in root_links:
