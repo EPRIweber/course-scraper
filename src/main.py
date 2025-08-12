@@ -26,6 +26,7 @@ from src.schema_manager import generate_schema, validate_schema
 from src.scraper import scrape_urls
 from src.classify_manager import classify_courses, flatten_taxonomy
 from src.storage import SqlServerScraping, StorageBackend
+from src.validate_source_match import validate_source_match
 
 LOGGING: dict = {
   "version": 1,
@@ -625,6 +626,19 @@ async def main():
     #     print(f"Inserting grad config for University of Florida with source_id {source_id}")
     
     # task_sources = []
+
+
+
+
+
+    for src in task_sources:
+        await validate_source_match(src)
+
+
+      
+    await close_playwright()
+    await storage.end_run(run_id)
+    return
 
     async def _run_phase(source: SourceConfig, stage: int, fn: Callable[..., Awaitable[None]], sem: asyncio.BoundedSemaphore):
         logger.info(f"[{source.name}] running {fn.__name__} (slots left: {sem._value})")
