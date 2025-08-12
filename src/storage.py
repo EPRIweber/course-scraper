@@ -88,6 +88,13 @@ class StorageBackend(ABC):
     async def find_similar_sources(self, candidates: list[str]) -> list[Tuple[str,str]]: ...
     @abstractmethod
     async def find_similar_ipeds(self, candidates: list[str]) -> list[Tuple[str,str,str]]: ...
+    @abstractmethod
+    async def get_search_results(self, distinct_id: str) -> list[tuple[str, Optional[str], Optional[str]]]: ...
+
+    @abstractmethod
+    async def get_source_distinct_id(self, source_id: str) -> Optional[str]: ...
+    @abstractmethod
+    async def save_search_results(self, distinct_id: str, rows: Sequence[Tuple[str, str, Optional[str]]]) -> None: ...
 
     @abstractmethod
     async def get_urls(self, source_id: str) -> List[str]: ...
@@ -170,6 +177,71 @@ class SqlServerScraping(StorageBackend):
     async def end_run(self, run_id: int):
         await self._exec(f"EXEC dbo.end_run ?", run_id)
 
+    async def get_source_distinct_id(self, source_id: str) -> Optional[str]:
+        rows = await self._fetch("SELECT source_distinct_id FROM dbo.sources WHERE source_id = ?", source_id)
+        if not rows:
+            return None
+        did = getattr(rows[0], "source_distinct_id", None)
+        return str(did) if did else None
+    
+    async def get_search_results(self, distinct_id: str) -> list[tuple[str, Optional[str], Optional[str]]]:
+        """
+        Return previously saved search results for a distinct_id as a list of
+        (url, search_query, info) tuples.
+        """
+        rows = await self._fetch(
+            "SELECT url, search_query, info FROM dbo.search_results WHERE search_results_distinct_id = ?",
+            distinct_id
+        )
+        if not rows:
+            return []
+        out = []
+        for r in rows:
+            # guard against NULLs
+            q = getattr(r, "search_query", None)
+            i = getattr(r, "info", None)
+            out.append((r.url, q, i))
+        return out
+
+
+    async def save_search_results(self, distinct_id: str, rows: Sequence[Tuple[str, str, Optional[str]]]) -> None:
+        """
+        Persist search results. `rows` are tuples of (url, search_query, info).
+        Upserts by (distinct_id, url) using MERGE; leaves existing info/query if already present.
+        """
+        if not rows:
+            return
+
+        sql = """
+        MERGE dbo.search_results WITH (HOLDLOCK) AS t
+        USING (SELECT ? AS did, ? AS url) AS s
+        ON t.search_results_distinct_id = s.did AND t.url = s.url
+        WHEN NOT MATCHED THEN
+          INSERT (search_results_distinct_id, url, info, search_query)
+          VALUES (s.did, s.url, ?, ?)
+        WHEN MATCHED THEN
+          UPDATE SET
+            info = COALESCE(t.info, ?),
+            search_query = COALESCE(t.search_query, ?);
+        """
+
+        payload = []
+        for url, query, info in rows:
+            payload.append((distinct_id, url, info, query, info, query))
+
+        async with self._lock:
+            def _bulk():
+                cur = self._conn.cursor()
+                try:
+                    cur.fast_executemany = True
+                    cur.executemany(sql, payload)
+                    self._conn.commit()
+                except Exception as e:
+                    self._conn.rollback()
+                    raise e
+            await self._run_sync(_bulk)
+
+
     async def find_similar_sources(self, candidates: list[str]) -> list[Tuple[str, str]]:
         """
         Call the find_similar_sources TVP proc to match each candidate name
@@ -232,17 +304,18 @@ class SqlServerScraping(StorageBackend):
         Insert (or fetch) the GUID of this source in `sources` and return it.
         """
         row = await self._fetch(
-            "{CALL dbo.upsert_source(?,?,?,?,?,?,?,?,?,?)}",
+            "{CALL dbo.upsert_source(?,?,?,?,?,?,?,?,?,?,?)}",
             src_cfg.name,
             src_cfg.type,
-            str(src_cfg.root_url),
-            str(src_cfg.schema_url),
+            str(src_cfg.root_url) if src_cfg.root_url else None,
+            str(src_cfg.schema_url) if src_cfg.schema_url else None,
             src_cfg.crawl_depth,
             src_cfg.include_external,
             src_cfg.page_timeout_s,
             src_cfg.max_concurrency,
             src_cfg.url_base_exclude,
-            json.dumps(src_cfg.url_exclude_patterns or [])
+            json.dumps(src_cfg.url_exclude_patterns or []),
+            src_cfg.is_enabled
         )
         if not row or not hasattr(row[0], "source_id"):
             raise RuntimeError("Failed to fetch or insert source; no source_id returned.")
@@ -270,7 +343,8 @@ class SqlServerScraping(StorageBackend):
                 page_timeout_s=r.page_timeout_s,
                 max_concurrency=r.max_concurrency,
                 url_base_exclude=r.url_base_exclude,
-                url_exclude_patterns=json.loads(r.url_exclude_patterns or "[]")
+                url_exclude_patterns=json.loads(r.url_exclude_patterns or "[]"),
+                is_enabled=r.is_enabled
             )
             for r in rows
         ]
@@ -309,7 +383,8 @@ class SqlServerScraping(StorageBackend):
                 page_timeout_s=r.page_timeout_s,
                 max_concurrency=r.max_concurrency,
                 url_base_exclude=r.url_base_exclude,
-                url_exclude_patterns=json.loads(r.url_exclude_patterns or "[]")
+                url_exclude_patterns=json.loads(r.url_exclude_patterns or "[]"),
+                is_enabled=r.is_enabled
             )
             for r in rows
         ]

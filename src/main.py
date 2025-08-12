@@ -16,6 +16,7 @@ from pprint import pprint
 from typing import Awaitable, Callable, Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
+from src.search_api import run_school_search
 from src.config_generator import discover_source_config
 from src.crawler import crawl_and_collect_urls
 from src.render_utils import close_playwright
@@ -316,24 +317,23 @@ async def process_config(
     school: str,
     run_id: int,
     storage: StorageBackend = None,
-    host: str = None
+    host: str = None,
+    presearch_results: list[list[str]] | None = None,
+    presearch_queries: list[str] | None = None,
 ) -> list[SourceConfig] | None:
-    """Generate config, upsert source, then run generate schema."""
-
-    # candidates, root_usage, schema_usage, root_errors, schema_errors  = await discover_source_config(school, host)
+    """Generate config, upsert source(s), then save pre-search results to DB once a distinct_id exists."""
 
     async def _log(src_id: str, stage: Stage, msg: str):
         logger.info(f"[{school}] {msg}")
         if storage:
             await storage.log(run_id, src_id, int(stage), msg)
+
+    # ---- discover candidates (use in-memory presearch results) ----
     try:
-        await _log(
-            # run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Generating Source for {school}"
+        await _log(None, Stage.CRAWL, f"Generating Source for {school}")
+        candidates, root_usage, schema_usage, root_errors, schema_errors = await discover_source_config(
+            school, host, presearch_results  # <— forward results to generator
         )
-        candidates, root_usage, schema_usage, root_errors, schema_errors, search_results  = await discover_source_config(school, host)
         formatted_root_errors = '\n\n'.join(root_errors)
         formatted_schema_errors = '\n\n'.join(schema_errors)
         await _log(
@@ -341,8 +341,6 @@ async def process_config(
             Stage.CRAWL,
             msg = f"""
 Config gen completed for {school} with {len(candidates)} sources
-
-Search Results: {search_results}
 
 Root Errors:
     {formatted_root_errors}
@@ -352,33 +350,109 @@ Schema Errors:
         )
         candidates: list[SourceConfig]
     except Exception as e:
-        await _log(
-            # run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Config generation failed for {school}: {e}"
-        )
-        raise Exception(f"Config generation failed for {school}: {e}")
-    uploaded = []
+        await _log(None, Stage.CRAWL, f"Config generation failed for {school}: {e}")
+        raise
+
+    # ---- upsert sources ----
+    uploaded: list[SourceConfig] = []
+    first_distinct_id: str | None = None
     try:
         for src_cfg in candidates:
-            if storage:
-                real_id = await storage.ensure_source(src_cfg)
-            else:
-                real_id = 'testing (no storage)'
+            real_id = await storage.ensure_source(src_cfg) if storage else "testing (no storage)"
             src_cfg.source_id = real_id
             uploaded.append(src_cfg)
+
     except Exception as e:
+        await _log(None, Stage.CRAWL, f"Failed to upsert source {school}: {e}")
+        raise
+
+    if uploaded:
         await _log(
-            # run_id=run_id,
-            src_id=None,
-            stage=Stage.CRAWL,
-            msg=f"Failed to upsert source {school}: {e}"
+            uploaded[-1].source_id,
+            Stage.CRAWL,
+            f"Created {len(uploaded)} source config(s) for {school} "
+            f"using {root_usage} tokens (root) and {schema_usage} tokens (schema)",
         )
-        raise Exception(f"Failed to upsert source {school}: {e}")
-            
-    await _log(real_id, Stage.CRAWL, f"Created source config for {str(school)} using {root_usage} tokens for root URL and {schema_usage} tokens for schema URL")
     return uploaded
+
+async def process_search(
+  run_id: int,
+  school: str,
+  storage: StorageBackend = None
+) -> tuple[list[str], list[list[str]]]:
+  """
+  Run Google search for a school (before config gen) and return (queries, results_by_query).
+  We store to DB only *after* a source exists so we can attach the correct distinct_id.
+  """
+  stage: Stage = Stage.CRAWL
+
+  async def _log(msg: str):
+    logger.info(f"[{school}] {msg}")
+    if storage:
+      await storage.log(run_id, None, int(stage), f"[SEARCH] {msg}")
+
+  if not storage:
+    await _log("Running pre-config Google search (no storage)")
+    try:
+      queries, results = await run_school_search(school)
+      await _log(f"Search complete; {sum(len(r) for r in results)} hits across {len(queries)} queries")
+      return queries, results
+    except Exception as exc:
+      await _log(f"FAILED search (no storage): {exc}")
+      logger.exception(exc)
+      return [], []
+    
+  try:
+    # 1) Ensure a dummy source exists so trigger creates distinct_sources row
+    dummy = SourceConfig(
+      source_id="dummy",
+      name=f"{school} src_000",     # unique key so it won't collide with real sources
+      type="dummy",
+      root_url="https://example.com/",
+      schema_url="https://example.com/",
+      is_enabled=False,             # critical: keep it out of enabled pipeline
+    )
+    dummy_id = await storage.ensure_source(dummy)
+    await _log(f"Ensured dummy source for search: {dummy_id}")
+
+    # 2) Pull distinct_id and check for existing search results
+    distinct_id = await storage.get_source_distinct_id(dummy_id)
+    if not distinct_id:
+      await _log("WARNING: No distinct_id resolved after dummy source insert; proceeding to live search")
+    else:
+      rows = await storage.get_search_results(distinct_id)
+      if rows:
+        # Group rows by search_query → (queries, results_by_query)
+        grouped: dict[str, list[str]] = {}
+        for url, q, _ in rows:
+          q_key = q or ""  # tolerate NULL search_query
+          grouped.setdefault(q_key, []).append(url)
+        # stable ordering by query text (empty string, if any, first)
+        queries = list(grouped.keys())
+        results = [grouped[q] for q in queries]
+        await _log(f"Found {sum(len(v) for v in grouped.values())} cached search hits across {len(queries)} queries; skipping live search")
+        return queries, results
+
+    # 3) No cached results → run search, then persist by distinct_id
+    await _log("Running pre-config Google search")
+    queries, results = await run_school_search(school)
+    await _log(f"Search complete; {sum(len(r) for r in results)} hits across {len(queries)} queries")
+
+    if distinct_id:
+      rows_to_save = []
+      for q, urls in zip(queries, results):
+        for u in (urls or []):
+          rows_to_save.append((u, q, None))  # (url, search_query, info)
+      if rows_to_save:
+        await storage.save_search_results(distinct_id, rows_to_save)
+        await _log(f"Saved {len(rows_to_save)} search result rows to DB")
+
+    return queries, results
+
+  except Exception as exc:
+    await _log(f"FAILED search: {exc}")
+    logger.exception(exc)
+    return [], []
 
 async def main():
     try:
@@ -447,8 +521,18 @@ async def main():
             elif attempts[school] >= MAX_ATTEMPTS:
                 await _log(Stage.CRAWL, f'Skipping config gen for {school}, reached max attempts')
                 continue
+
+            pre_qs, pre_hits = await process_search(run_id, school, storage)
+
             try:
-                sources = await process_config(school, run_id, storage, host=ipeds_host)
+                sources = await process_config(
+                    school=school,
+                    run_id=run_id,
+                    storage=storage,
+                    host=ipeds_host,
+                    presearch_results=pre_hits,      # <— pass URLs grouped by query
+                    presearch_queries=pre_qs         # <— pass queries so we can persist them
+                )
                 attempts[school] += 1
                 if sources:
                     task_sources.extend(sources)
@@ -479,7 +563,10 @@ async def main():
     
     logger.info(f"Generated {len(task_sources)} new sources to process.")
 
+    await close_playwright()
+    await storage.end_run(run_id)
 
+    return
 
     # sources: list[SourceConfig] = await storage.list_sources
     # all_sources: list[SourceConfig] = await storage.get_tasks()
@@ -695,7 +782,7 @@ async def testing():
     new_schools = [
     # ('Bethune-Cookman',	'cookman.edu/'),
     # ('Baldwin Wallace', 	'bw.edu/'),
-# ('appalachian state university',    'appstate.edu/'),
+('appalachian state university',    'appstate.edu/'),
 # ('bowie state university',	'bowiestate.edu/'),
 # ('california institute of technology',	'caltech.edu/')
     ]
@@ -705,13 +792,14 @@ async def testing():
     exceptions = []
     try:
         for school, host in new_schools:
-            try:
-                candidates, _, _, root_errors, schema_errors = await discover_source_config(school, host)
+            # try:
+                pre_qs, pre_hits = await process_search(1, school, None)
+                candidates, _, _, root_errors, schema_errors = await discover_source_config(school, host, pre_hits)
                 # append a single tuple per school (don’t extend with a tuple)
                 results.append((school, candidates, root_errors, schema_errors))
-            except Exception as e:
-                exceptions.append((school, e))
-                print(f"[{school}] {e}")
+            # except Exception as e:
+            #     exceptions.append((school, e))
+            #     print(f"[{school}] {e}")
     finally:
         # ensure playwright shuts down even if something raises
         await close_playwright()

@@ -25,6 +25,7 @@ class SourceConfig(BaseModel):
     url_base_exclude: Optional[str] = None
     url_exclude_patterns: Optional[list[str]] = None
     max_links_per_page: Optional[int] = None
+    is_enabled: Optional[bool] = None
 
     class Config:
         extra = 'forbid'

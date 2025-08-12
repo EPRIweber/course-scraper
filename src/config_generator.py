@@ -42,7 +42,11 @@ DEBUG = True
 
 
 # --- Public API ---------------------------------------------------------------
-async def discover_source_config(name: str, host: str | None = None) -> tuple[list[SourceConfig], int, int, list[str], list[str], list[str]]:
+async def discover_source_config(
+    name: str,
+    host: str | None = None,
+    presearch_results: list[list[str]] | None = None
+) -> tuple[list[SourceConfig], int, int, list[str], list[str]]:
   """Discover one or more SourceConfig objects for the given school name.
 
   Returns (candidates, total_root_tokens, total_schema_tokens, root_errors, schema_errors).
@@ -52,7 +56,11 @@ async def discover_source_config(name: str, host: str | None = None) -> tuple[li
   final_candidates: list[SourceConfig] = []
 
   # NOTE: discover_catalog_urls now returns totals instead of per-config usage
-  candidates, root_errors, schema_errors, pdf_configs, total_root, total_schema, search_results, max_depth = await discover_catalog_urls(name, host)
+  candidates, root_errors, schema_errors, pdf_configs, total_root, total_schema, max_depth = await discover_catalog_urls(
+    name,
+    host,
+    presearch_results
+  )
 
   for root, schema in candidates:
     pr = urlparse(root)
@@ -92,13 +100,14 @@ async def discover_source_config(name: str, host: str | None = None) -> tuple[li
     )
     candidate_count += 1
 
-  return final_candidates, int(total_root or 0), int(total_schema or 0), root_errors, schema_errors, search_results
+  return final_candidates, int(total_root or 0), int(total_schema or 0), root_errors, schema_errors
 
 # --- Core discovery -----------------------------------------------------------
 async def discover_catalog_urls(
   school: str,
   host: str | None = None,
-) -> Tuple[list[Tuple[str, str]], list[str], list[str], list[Tuple[str, str]], int, int, list[str], Optional[int]]:
+  presearch_results: list[list[str]] | None = None,
+) -> Tuple[list[Tuple[str, str]], list[str], list[str], list[Tuple[str, str]], int, int, Optional[int]]:
   """Return discovered candidate configs and error collections for `school`.
 
   Return shape:
@@ -106,29 +115,9 @@ async def discover_catalog_urls(
   where each candidate_config is (root_url, schema_url). Token usage is returned as totals.
   """
 
-  queries = [
-    f"{school} course description current catalog",
-    # f"{school} undergraduate course description current catalog",
-    # f"{school} graduate course description current catalog",
-  ]
-
   root_url_errors: list[str] = []
   schema_gen_errors: list[str] = []
-
-  query_results: list[list[str]] = []
-  for q in queries:
-    try:
-      hits = await google_search(q)
-      # hits = []
-      pass
-    except Exception as e:
-      logger.warning("Search failed for %s with %r: %s", school, q, e)
-      hits = []
-    query_results.append(hits)
   
-  if not any(query_results):
-    raise Exception(f"No search results found for {school} with queries: {queries}")
-
   # We no longer store per-config usage; only totals per school
   total_root_usage = 0
   total_schema_usage = 0
@@ -141,7 +130,7 @@ async def discover_catalog_urls(
   max_depth: Optional[int] = None
 
   if DEBUG:
-    print(f"Search Results:\n {query_results}")
+    print(f"Search Results:\n {presearch_results}")
 
   # Helper: robust Modern Campus detection
   def _looks_like_modern_campus(hit_url: str, html_text: str) -> bool:
@@ -152,7 +141,7 @@ async def discover_catalog_urls(
       return True
     return False
 
-  for results in query_results:
+  for results in presearch_results:
     if mc_found:
       break
     if not results:
@@ -190,9 +179,12 @@ async def discover_catalog_urls(
 
           if candidate_configs or pdf_configs:
             mc_found = True
-            max_depth = 100  # keep your previous behavior for MC depth
-            break  # short-circuit: MC gives everything we need
+            max_depth = 100
+          else:
+            root_url_errors.append(f"Modern Campus Site Fail at {hit}")
+          # break  # short-circuit: MC gives everything we need
         else:
+          root_url_errors.append(f"Modern Campus site not found at {hit}")
           continue  # skip non-MC for now
         # --- Non-MC path (unchanged behavior except usage now totals) ---
         course_descr_links: list[str] = []
@@ -269,7 +261,7 @@ async def discover_catalog_urls(
 
   if mc_found:
     print("Returning Early with Modern Campus Results")
-    return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, query_results, max_depth
+    return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, max_depth
 
   # Legacy final error behavior for non-MC path
   if not root_urls or not pdf_configs:
@@ -313,7 +305,7 @@ async def discover_catalog_urls(
       schema_gen_errors.append(f"Schema URL Finding Fail for {root_url}\n\nError: {e}")
       logger.debug("Schema selection failure for %s: %s", root_url, e)
 
-  return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, query_results, max_depth
+  return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, max_depth
 
 # --- Modern Campus flow -------------------------------------------------------
 async def process_modern_campus(
@@ -334,18 +326,29 @@ async def process_modern_campus(
     try:
       return await page.evaluate(
         """
-        () => Array.from(document.querySelectorAll('a[href]')).map(a => ({
-          href: a.getAttribute('href') || '',
-          abs: a.href,
-          text: (a.textContent||'').trim().toLowerCase(),
-          onclick: a.getAttribute('onclick') || ''
-        }))
+        () => Array.from(document.querySelectorAll('a[href]')).map(a => {
+          const text  = (a.textContent || '').trim().toLowerCase();
+          const title = (a.getAttribute('title') || '').trim().toLowerCase();
+          const aria  = (a.getAttribute('aria-label') || '').trim().toLowerCase();
+          const imgAlt = Array.from(a.querySelectorAll('img[alt]'))
+                              .map(i => (i.getAttribute('alt') || '').trim().toLowerCase())
+                              .join(' ');
+          return {
+            href: a.getAttribute('href') || '',
+            abs: a.href,
+            text,
+            title,
+            aria,
+            imgAlt,
+            onclick: a.getAttribute('onclick') || ''
+          };
+        })
         """
       )
     except Exception:
       return []
   
-  async def _extract_roots_from_dom(page, current_url: str, host_filter: Optional[str]) -> list[str]:
+  async def _extract_roots_from_dom(page, current_url: str, host_filter: Optional[str], fallback: Optional[bool] = False) -> list[str]:
     anchors = await _anchors_eval(page)
 
     def _looks_mc_link(u: str) -> bool:
@@ -359,22 +362,34 @@ async def process_modern_campus(
 
     roots: list[str] = []
     for a in anchors:
-      href = a.get('href') or ''
-      absu = a.get('abs') or ''
-      text = a.get('text') or ''
+      href   = a.get('href')   or ''
+      absu   = a.get('abs')    or ''
+      text   = a.get('text')   or ''
+      title  = a.get('title')  or ''
+      aria   = a.get('aria')   or ''
+      imgAlt = a.get('imgAlt') or ''
       if not href and not absu:
         continue
 
       link = absu or (href if urlparse(href).netloc else urljoin(current_url, href))
+      link_l = (link or '').lower()
+
+      # hard fallback: accept any MC category/tile like ...content.php?...catoid=...
+      if fallback and ('content.php' in link_l and 'catoid=' in link_l):
+        roots.append(link)
+        continue
 
       # RELAXED host filtering for Modern Campus targets
-      if host_filter and (host_filter.lower() not in (link or '').lower()):
+      if host_filter and (host_filter.lower() not in link_l):
         # allow MC-shaped links even if host doesn't match (catalog subdomains, alias domains)
         if not (_looks_mc_link(href) or _looks_mc_link(absu)):
           continue
 
+      # combine visible labels (handles image-only anchors)
+      label = f"{text} {title} {aria} {imgAlt}".strip().lower()
+
       # keep simple text heuristics
-      if ('course description' in text) or ('courses description' in text) or ('course' in text):
+      if ('course description' in label) or ('courses description' in label) or ('course' in label):
         roots.append(link)
 
     return list(OrderedDict.fromkeys(roots))
@@ -496,12 +511,15 @@ async def process_modern_campus(
         # No selectable options; scan current page anchors
         root_links.extend(await _extract_roots_from_dom(page, page.url, host))
 
+      # strict fallback: pick any MC category/tile links when labels are empty (e.g., image-only tiles)
+      if not root_links:
+        root_links.extend(await _extract_roots_from_dom(page, page.url, host, fallback=True))
+
       root_links = list(OrderedDict.fromkeys(root_links))
 
       if not root_links:
-        alt = await _extract_roots_from_dom(page, page.url, None)
+        alt = await _extract_roots_from_dom(page, page.url, None, fallback=True)
         root_links = list(OrderedDict.fromkeys(alt))
-
 
       # For each root, find schema_url via showCourse / preview_course_nopop.php
       for root_url in root_links:
@@ -697,8 +715,8 @@ async def llm_select_schema(school: str, root_url: str, pages: List[dict]) -> tu
 
 # --- Optional: local smoke test (commented) ----------------------------------
 async def _smoke_test():
-  mc_url = "https://catalog.wmich.edu/"  # replace with known Modern Campus URL
-  res = await process_modern_campus(mc_url)
+  mc_url = "https://catalog.dallascollege.edu/"  # replace with known Modern Campus URL
+  res = await process_modern_campus(mc_url, 'wmich.edu')
   pprint(res)
 
 if __name__ == "__main__":
