@@ -24,7 +24,7 @@ from crawl4ai.utils import get_content_of_website_optimized
 from .config import SourceConfig
 from .llm_client import GPTModel
 from .prompts.catalog_urls import CatalogRootPrompt, CatalogSchemaPrompt
-from .render_utils import fetch_page
+from .render_utils import close_playwright, fetch_page
 
 logger = logging.getLogger(__name__)
 
@@ -158,12 +158,13 @@ async def discover_catalog_urls(
         # seen.add(hit)
         html = await fetch_page(hit, default_playwright=True)
         soup = BeautifulSoup(html or "", "html.parser")
+        origin_links = ' '.join([a.get("href") for a in soup.find_all("a", href=True)])
         page_text = soup.decode() if soup else ""
         txt_lower = soup.get_text(" ", strip=True).lower()
         # print(f"Raw HTML: {html}...")  # NEW DEBUG PRINT
 
         # --- Modern Campus branch ---
-        if ("modern campus" in txt_lower):
+        if ("modern campus" in txt_lower or 'content.php?catoid=' in origin_links):
           mc_candidates, mc_root_errs, mc_schema_errs, mc_pdfs = await process_modern_campus(hit, host)
           root_url_errors.extend(mc_root_errs)
           schema_gen_errors.extend(mc_schema_errs)
@@ -375,7 +376,7 @@ async def process_modern_campus(
       link_l = (link or '').lower()
 
       # hard fallback: accept any MC category/tile like ...content.php?...catoid=...
-      if fallback and ('content.php' in link_l and 'catoid=' in link_l):
+      if fallback and ('content.php' in link_l and 'catoid=' in link_l) and 'preview_course_nopop' not in link_l:
         roots.append(link)
         continue
 
@@ -395,13 +396,22 @@ async def process_modern_campus(
     return list(OrderedDict.fromkeys(roots))
 
   async def _safe_select(page, value: str):
+    import re
     try:
-      async with page.expect_navigation(wait_until='networkidle', timeout=5000):
-        await page.select_option('#select_catalog', value)
+        # Most MC pages navigate; 'load' is sufficient and doesn't hang like 'networkidle'
+        async with page.expect_navigation(wait_until='load', timeout=10000):
+            await page.select_option('#select_catalog', value)
     except Exception:
-      await page.select_option('#select_catalog', value)
-      await page.wait_for_load_state('networkidle')
-      await asyncio.sleep(0.5)
+        # Fallback: select without expecting navigation, then look for either URL change or a catalog marker
+        await page.select_option('#select_catalog', value)
+        try:
+            # Many MC URLs include ?catoid=<value>
+            await page.wait_for_url(re.compile(rf'catoid={value}\b'), timeout=7000)
+        except Exception:
+            # Final fallback: just ensure the page finished loading
+            await page.wait_for_load_state('load', timeout=7000)
+    await asyncio.sleep(0.3)
+
 
   # --- helpers to normalize and pick exactly ONE year group ---
   import re
@@ -434,16 +444,18 @@ async def process_modern_campus(
     return None
 
   def _is_undergrad(label: str) -> bool:
-    return 'undergraduate' in (label or '').lower()
+    first = 'undergraduate' in (label or '').lower()
+    return first or 'undergrad' in (label or '').lower()
 
   def _is_grad(label: str) -> bool:
-    return 'graduate' in (label or '').lower()
+    first =  'graduate' in (label or '').lower()
+    return first or 'grad' in (label or '').lower()
 
   try:
     async with async_playwright() as pw:
       browser = await pw.chromium.launch(headless=True)
       page = await browser.new_page()
-      await page.goto(hit, wait_until='networkidle')
+      await page.goto(hit, wait_until='load')
 
       try:
         # Preserve option order; we will use the first target match by this order
@@ -451,6 +463,19 @@ async def process_modern_campus(
           '#select_catalog option',
           "els => els.map(o => ({value:o.value, text:(o.textContent||'').trim()}))",
         )
+        if len(options) <= 1:
+          try:
+              # open the Select2 so it populates the hidden <select>
+              await page.click('span.select2-selection--single')
+              await page.wait_for_selector('.select2-results__option', timeout=5000)
+              await asyncio.sleep(0.2)  # give it a beat to sync
+              options = await page.eval_on_selector_all(
+                  '#select_catalog option',
+                  "els => els.map(o => ({value:o.value, text:(o.textContent||'').trim()}))",
+              )
+          except Exception:
+              pass
+
       except Exception as e:
         options = []
         root_errors.append(f"Failed to read #select_catalog options at {hit}: {e}")
@@ -496,7 +521,7 @@ async def process_modern_campus(
         if lower and upper:
           chosen_opts = lower + upper
         else:
-          chosen_opts = group[:1]
+          chosen_opts = group
 
       # Collect candidate root links from the chosen year ONLY
       root_links: list[str] = []
@@ -524,7 +549,7 @@ async def process_modern_campus(
       # For each root, find schema_url via showCourse / preview_course_nopop.php
       for root_url in root_links:
         try:
-          await page.goto(root_url, wait_until='networkidle')
+          await page.goto(root_url, wait_until='load')
           anchors = await _anchors_eval(page)
 
           schema_url: Optional[str] = None
@@ -713,11 +738,12 @@ async def llm_select_schema(school: str, root_url: str, pages: List[dict]) -> tu
   return url, usage
 
 
-# --- Optional: local smoke test (commented) ----------------------------------
 async def _smoke_test():
-  mc_url = "https://catalog.dallascollege.edu/"  # replace with known Modern Campus URL
-  res = await process_modern_campus(mc_url, 'wmich.edu')
+  mc_url = "https://catalog.grcc.edu/"  # replace with known Modern Campus URL
+  res = await discover_catalog_urls('grand rapids community college', 'grcc.edu', [[mc_url]])
   pprint(res)
+
+  close_playwright()
 
 if __name__ == "__main__":
   import asyncio

@@ -3,6 +3,7 @@ import asyncio
 import logging
 import random
 from typing import Optional
+from bs4 import BeautifulSoup
 
 import httpx
 from crawl4ai import AsyncWebCrawler
@@ -114,7 +115,14 @@ def _looks_like_cloudflare(html: str) -> bool:
         "attention required",
         "utm_source=challenge",
     )
-    return any(m in h for m in markers)
+    soup = BeautifulSoup(html, "html.parser")
+    urls = [a.get("href") for a in soup.find_all("a", href=True)]
+    for u in urls:
+        if any(m in u.lower() for m in markers):
+            return True
+    return False
+    
+
 
 async def fetch_with_fallback(
     url: str,

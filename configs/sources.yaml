@@ -1,11 +1,11 @@
 sources:
 
-# - name: north_carolina_state_university
-#   root_url: https://catalog.ncsu.edu/course-descriptions/
-#   schema_url: https://catalog.ncsu.edu/course-descriptions/csc/
-#   url_base_exclude: 
-#   max_concurrency: 1
-#   crawl_depth: 4
+- name: north_carolina_state_university
+  root_url: https://catalog.ncsu.edu/course-descriptions/
+  schema_url: https://catalog.ncsu.edu/course-descriptions/csc/
+  url_base_exclude: 
+  max_concurrency: 1
+  crawl_depth: 4
 
 # - name: brown_university
 #   root_url: https://bulletin.brown.edu/

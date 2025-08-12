@@ -351,12 +351,25 @@ class SqlServerScraping(StorageBackend):
     
     async def get_tasks(self) -> List[SourceConfig]:
         sql = """
-            SELECT DISTINCT s.*
-            FROM sources AS s
-            LEFT JOIN courses AS c
-            ON s.source_id = c.course_source_id
-            WHERE c.course_id IS NULL
-            AND s.source_base_url LIKE '%catoid%'
+WITH scraped_bases AS (
+  SELECT DISTINCT s2.source_base_url
+  FROM sources s2
+  JOIN courses c ON c.course_source_id = s2.source_id
+)
+SELECT DISTINCT
+  s.*
+  --,s.source_name,
+  --s.source_base_url,
+  --s.sources_crtd_dt
+FROM sources s
+LEFT JOIN courses c_self
+  ON c_self.course_source_id = s.source_id            -- (1) ensure THIS source has no courses
+LEFT JOIN scraped_bases sb
+  ON sb.source_base_url = s.source_base_url           -- (2) ensure no other same-base has courses
+WHERE s.source_type <> 'dummy'                         -- (3)
+  AND c_self.course_source_id IS NULL
+  AND sb.source_base_url IS NULL
+  AND LOWER(COALESCE(s.source_base_url,'')) LIKE '%catoid=%'
         """
         
             # LEFT JOIN urls AS u
