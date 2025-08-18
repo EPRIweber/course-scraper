@@ -90,6 +90,10 @@ class StorageBackend(ABC):
     async def find_similar_ipeds(self, candidates: list[str]) -> list[Tuple[str,str,str]]: ...
     @abstractmethod
     async def get_search_results(self, distinct_id: str) -> list[tuple[str, Optional[str], Optional[str]]]: ...
+    @abstractmethod
+    async def get_site_name(self, source_id) -> Optional[str]: ...
+    @abstractmethod
+    async def save_site_name(self, source_id: str, site_name: str): ...
 
     @abstractmethod
     async def get_source_distinct_id(self, source_id: str) -> Optional[str]: ...
@@ -351,24 +355,26 @@ class SqlServerScraping(StorageBackend):
     
     async def get_tasks(self) -> List[SourceConfig]:
         sql = """
+        /*
 WITH scraped_bases AS (
   SELECT DISTINCT s2.source_base_url
   FROM sources s2
   JOIN courses c ON c.course_source_id = s2.source_id
 )
+*/
 SELECT DISTINCT
   s.*
   --,s.source_name,
   --s.source_base_url,
   --s.sources_crtd_dt
 FROM sources s
-LEFT JOIN courses c_self
-  ON c_self.course_source_id = s.source_id            -- (1) ensure THIS source has no courses
-LEFT JOIN scraped_bases sb
-  ON sb.source_base_url = s.source_base_url           -- (2) ensure no other same-base has courses
+--LEFT JOIN courses c_self
+  --ON c_self.course_source_id = s.source_id            -- (1) ensure THIS source has no courses
+--LEFT JOIN scraped_bases sb
+  --ON sb.source_base_url = s.source_base_url           -- (2) ensure no other same-base has courses
 WHERE s.source_type <> 'dummy'                         -- (3)
-  AND c_self.course_source_id IS NULL
-  AND sb.source_base_url IS NULL
+  --AND c_self.course_source_id IS NULL
+  --AND sb.source_base_url IS NULL
   AND LOWER(COALESCE(s.source_base_url,'')) LIKE '%catoid=%'
         """
         
@@ -414,6 +420,22 @@ WHERE s.source_type <> 'dummy'                         -- (3)
         if not rows:
             return []
         return rows or []
+    
+    async def get_site_name(self, source_id) -> Optional[str]:
+        sql = """
+SELECT site_name FROM sources WHERE source_id = ?"""
+        site_name = await self._fetch(sql, source_id)
+        return site_name[0].site_name if site_name else None
+    
+    async def save_site_name(self, source_id: str, site_name: str):
+        sql = """
+UPDATE sources
+SET site_name = ?
+WHERE source_id = ?
+"""
+        await self._exec(
+            sql, site_name, source_id
+        )
 
     async def log(self, run_id: int, src_id: str, stage: int, msg: str):
         """Insert a log message for a run and source."""

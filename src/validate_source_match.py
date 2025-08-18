@@ -18,7 +18,6 @@ def _normalize(s: str) -> str:
     """lowercase and remove non-alphanumerics for forgiving substring match."""
     return re.sub(r'[^a-z0-9]+', '', (s or '').lower())
 
-
 async def validate_source_match(
     source: SourceConfig,
 ) -> Tuple[bool, str]:

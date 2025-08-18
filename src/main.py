@@ -16,6 +16,7 @@ from pprint import pprint
 from typing import Awaitable, Callable, Optional
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
+from src.find_name import find_site_name
 from src.search_api import run_school_search
 from src.config_generator import discover_source_config
 from src.crawler import crawl_and_collect_urls
@@ -477,6 +478,14 @@ async def main():
         if storage:
             await storage.log(run_id, source_id, int(stage), msg)
 
+
+
+
+
+
+
+
+
     # try:
     #     new_schools = []
     #     with open('configs/new_schools.csv', 'r') as f:
@@ -484,14 +493,14 @@ async def main():
     #         for r in csv_reader:
     #             new_schools.append(r[0])
         
-    #     new_schools = [
-    #       # 'coastal carolina community college',
-    #       # 'lenoir-rhyne university',
-    #       # 'unity college',
-    #       'grand rapids community college',
-    #       # 'gwinnett college',
-    #       # 'west shore community college'
-    #     ]
+    #     # new_schools = [
+    #     #   # 'coastal carolina community college',
+    #     #   # 'lenoir-rhyne university',
+    #     #   # 'unity college',
+    #     #   'grand rapids community college',
+    #     #   # 'gwinnett college',
+    #     #   # 'west shore community college'
+    #     # ]
         
     #     source_rows = await storage.find_similar_sources(new_schools)
     #     # for row in source_rows:
@@ -576,14 +585,25 @@ async def main():
     
     # logger.info(f"Generated {len(task_sources)} new sources to process.")
 
+
+
+
     # await close_playwright()
     # await storage.end_run(run_id)
 
     # return
 
+
+
+
+
+
+
+
+
     # sources: list[SourceConfig] = await storage.list_sources
     all_sources: list[SourceConfig] = await storage.get_tasks()
-    task_sources = all_sources
+    # task_sources = all_sources
     # yaml_sources: list[SourceConfig] = config.sources
     # yaml_names = [s.name for s in yaml_sources]
     # target_sources = [
@@ -625,17 +645,54 @@ async def main():
 
     #     print(f"Inserting grad config for University of Florida with source_id {source_id}")
     
-    # task_sources = []
+    task_sources = []
+
+    async def resolve_site_name(src: SourceConfig) -> Optional[str]:
+        # 1) Try cached value
+        site = None
+        if hasattr(storage, "get_site_name"):
+            try:
+                site = await storage.get_site_name(src.source_id)
+            except Exception as e:
+                logger.warning(f"[{src.name}] get_site_name failed: {e}")
+
+        # 2) If missing, detect from page
+        if not site:
+            try:
+                site = await find_site_name(src)
+            except Exception as e:
+                logger.warning(f"[{src.name}] detect_site_name failed: {e}")
+                site = None
+
+            # 3) Persist if found
+            if site:
+                try:
+                    await storage.save_site_name(src.source_id, site)
+                except Exception as e:
+                    logger.warning(f"[{src.name}] save_site_name failed: {e}")
+
+        return site
 
 
+    for src in all_sources:
+        site_name = await resolve_site_name(src)
+        if site_name:
+            logger.info(f"[{src.name}] site_name = {site_name}")
+        else:
+            logger.info(f"[{src.name}] site_name not found")
+        task_sources.append(src)
+
+            
 
 
+        # flag, msg = await validate_source_match(src)
+        # await _log(Stage.CRAWL, msg = msg, source_id = src.source_id)
+        # if flag:
+        #     task_sources.append(src)
+        # else:
+        #     src.is_enabled = False
+        #     await storage.ensure_source(src)
 
-    for src in task_sources:
-        await validate_source_match(src)
-
-
-      
     await close_playwright()
     await storage.end_run(run_id)
     return
@@ -649,7 +706,7 @@ async def main():
             f"[{source.name}] running {fn.__name__} (slots left: {sem._value})"
         )
         await fn(run_id, source, storage)
-    
+
     batch_size = 1
     logger.info(f"Starting run with {len(task_sources)} sources (batch size: {batch_size})")
     await storage.log(
@@ -658,13 +715,8 @@ async def main():
         Stage.CRAWL,
         f"Starting run with {len(task_sources)} sources (batch size: {batch_size})"
     )
-    
+
     try:
-            
-
-
-
-
 
         for batch in (task_sources[i:i+batch_size] 
                   for i in range(0, len(task_sources), batch_size)):

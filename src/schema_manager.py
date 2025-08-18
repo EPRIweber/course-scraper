@@ -108,12 +108,12 @@ async def _generate_schema_from_llm(
 
 
 
-  # if "Modern Campus Catalog" in catalog_html:
-  #   # raw_html = await _fetch_and_expand(str(url), catalog_html)
-  #   with open("src/modern_campus.json", 'r') as f:
-  #     return json.load(f), 0
-  # else:
-  #   raw_html = catalog_html
+  if "Modern Campus Catalog" in catalog_html:
+    # raw_html = await _fetch_and_expand(str(url), catalog_html)
+    with open("src/modern_campus.json", 'r') as f:
+      return json.load(f), 0
+  else:
+    raw_html = catalog_html
   
 
 
