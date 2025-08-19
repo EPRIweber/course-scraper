@@ -155,7 +155,6 @@ async def discover_catalog_urls(
       if mc_found:
         break
       try:
-        # seen.add(hit)
         html = await fetch_page(hit, default_playwright=True)
         soup = BeautifulSoup(html or "", "html.parser")
         origin_links = ' '.join([a.get("href") for a in soup.find_all("a", href=True)])
@@ -197,7 +196,7 @@ async def discover_catalog_urls(
 
           # Add a few best candidates. Each PDF is both root and schema.
           # (Keeps your downstream expectations unchanged.)
-          for pdf_link in pdfs[:5]:
+          for pdf_link in pdfs:
             pdf_configs.append((pdf_link, pdf_link))
             logger.info(f"[{school}] PDF catalog candidate: {pdf_link}")
           continue
@@ -603,24 +602,19 @@ async def process_pdf(
     allowed_host: str | None
 ) -> str:
   soup = BeautifulSoup(html or "", "lxml")
+  links = soup.find_all("a")
+  print(f"Process_PDF found links: {links}")
   links = []
-  for a in soup.find_all("a", href=True):
+  for a in soup.find_all("a"):
     href = a["href"].strip()
-    #if not href:
-      #continue
+    if not href:
+      continue
     # Any explicit .pdf OR content URLs that end with .pdf after query removal
     print(f"Checking link {href}")
     candidate = urljoin(base_url, href)
     print(f"After join {href}")
     if ".pdf" not in candidate.lower():
       continue
-    # host filter (when we know the school's host)
-    if allowed_host:
-      try:
-        if allowed_host not in urlparse(candidate).netloc:
-          continue
-      except Exception:
-        continue
     # lightweight heuristics to prioritize catalogs
     lower = candidate.lower()
     score = 0
@@ -798,7 +792,7 @@ async def _smoke_test():
   )
   pprint(res)
 
-  close_playwright()
+  await close_playwright()
 
 if __name__ == "__main__":
   import asyncio
