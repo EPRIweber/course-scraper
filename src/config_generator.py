@@ -186,22 +186,8 @@ async def discover_catalog_urls(
           # break  # short-circuit: MC gives everything we need
         else:
           root_url_errors.append(f"Modern Campus site not found at {hit}")
-          
-          # ---------------------------
-          # PDF branch (added)
-          # ---------------------------
-          pdfs = process_pdf(html, base_url=hit, allowed_host=host)
-          if not pdfs:
-            root_url_errors.append(f"No PDF catalog links found at {hit}")
-            continue
-
-          # Add a few best candidates. Each PDF is both root and schema.
-          # (Keeps your downstream expectations unchanged.)
-          for pdf_link in pdfs[:5]:
-            pdf_configs.append((pdf_link, pdf_link))
-            logger.info(f"[{school}] PDF catalog candidate: {pdf_link}")
-          continue
-            
+          continue  # skip non-MC for now
+        # --- Non-MC path (unchanged behavior except usage now totals) ---
         course_descr_links: list[str] = []
         hit_domain = urlparse(hit).netloc
         for a in soup.find_all("a", href=True):
@@ -274,7 +260,7 @@ async def discover_catalog_urls(
         root_url_errors.append(f"Root Select Failed for Hit {hit}\n\nError: {e}")
         logger.debug("Root selection failure for %s: %s", hit, e)
 
-  if mc_found or pdf_configs:
+  if mc_found:
     print("Returning Early with Modern Campus Results")
     return candidate_configs, root_url_errors, schema_gen_errors, pdf_configs, total_root_usage, total_schema_usage, max_depth
 
@@ -596,43 +582,6 @@ async def process_modern_campus(
 
   return candidate_configs, root_errors, schema_errors, pdf_configs
 
-# --- PDF Flow
-async def process_pdf(
-    html: str,
-    base_url: str,
-    allowed_host: str | None
-) -> str:
-  soup = BeautifulSoup(html or "", "lxml")
-  links = []
-  for a in soup.find_all("a", href=True):
-    href = a["href"].strip()
-    if not href:
-      continue
-    # Any explicit .pdf OR content URLs that end with .pdf after query removal
-    print(f"Checking link {href}")
-    candidate = urljoin(base_url, href)
-    print(f"After join {href}")
-    if ".pdf" not in candidate.lower():
-      continue
-    # host filter (when we know the school's host)
-    if allowed_host:
-      try:
-        if allowed_host not in urlparse(candidate).netloc:
-          continue
-      except Exception:
-        continue
-    # lightweight heuristics to prioritize catalogs
-    lower = candidate.lower()
-    score = 0
-    for kw in ("catalog", "bulletin", "course", "curriculum", "program"):
-      if kw in lower:
-        score += 1
-    # allow everything with .pdf, but sort by score
-    links.append((score, candidate))
-  # highest scoring first; if ties, keep original order
-  links.sort(key=lambda t: (-t[0], t[1]))
-  return [c for _, c in links]
-
 # --- Helpers -----------------------------------------------------------------
 async def fetch_snippets(urls: List[str], return_html: Optional[bool] = False) -> List[dict]:
   """Fetch each URL using Playwright by default; return pruned snippets or optimized text.
@@ -790,12 +739,8 @@ async def llm_select_schema(school: str, root_url: str, pages: List[dict]) -> tu
 
 
 async def _smoke_test():
-  mc_url = "https://catalog.utah.edu/"  # replace with known Modern Campus URL
-  res = await discover_catalog_urls(
-    school='University of Utah',
-    host='utah.edu',
-    presearch_results=[[mc_url]]
-  )
+  mc_url = "https://catalog.grcc.edu/"  # replace with known Modern Campus URL
+  res = await discover_catalog_urls('grand rapids community college', 'grcc.edu', [[mc_url]])
   pprint(res)
 
   close_playwright()
