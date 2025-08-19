@@ -190,7 +190,7 @@ async def discover_catalog_urls(
           # ---------------------------
           # PDF branch (added)
           # ---------------------------
-          pdfs = process_pdf(html, base_url=hit, allowed_host=host)
+          pdfs = await process_pdf(html, base_url=hit, allowed_host=host)
           if not pdfs:
             root_url_errors.append(f"No PDF catalog links found at {hit}")
             continue
@@ -606,8 +606,8 @@ async def process_pdf(
   links = []
   for a in soup.find_all("a", href=True):
     href = a["href"].strip()
-    if not href:
-      continue
+    #if not href:
+      #continue
     # Any explicit .pdf OR content URLs that end with .pdf after query removal
     print(f"Checking link {href}")
     candidate = urljoin(base_url, href)
