@@ -631,10 +631,10 @@ Will need to dedupe against existing sources in DB and repeat rows in the CSV.
 
 
 
-    await close_playwright()
-    await storage.end_run(run_id)
+    # await close_playwright()
+    # await storage.end_run(run_id)
 
-    return
+    # return
 
 
 
@@ -645,7 +645,7 @@ Will need to dedupe against existing sources in DB and repeat rows in the CSV.
 
 
     # sources: list[SourceConfig] = await storage.list_sources
-    all_sources: list[SourceConfig] = await storage.get_tasks()
+    all_sources: list[SourceConfig] = task_sources #await storage.get_tasks()
     # task_sources = all_sources
     # yaml_sources: list[SourceConfig] = config.sources
     # yaml_names = [s.name for s in yaml_sources]
@@ -724,9 +724,6 @@ Will need to dedupe against existing sources in DB and repeat rows in the CSV.
         else:
             logger.info(f"[{src.name}] site_name not found")
         task_sources.append(src)
-
-            
-
 
         # flag, msg = await validate_source_match(src)
         # await _log(Stage.CRAWL, msg = msg, source_id = src.source_id)
