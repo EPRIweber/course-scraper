@@ -12,8 +12,10 @@ import csv
 import json
 import logging, logging.config
 import os
+import pandas as pd
 from pprint import pprint
 from typing import Awaitable, Callable, Optional
+from urllib.parse import urlparse
 
 from src.config import SourceConfig, Stage, config, ValidationCheck
 from src.find_name import find_site_name
@@ -486,112 +488,153 @@ async def main():
 
 
 
-    # try:
-    #     new_schools = []
-    #     with open('configs/new_schools.csv', 'r') as f:
-    #         csv_reader = csv.reader(f)
-    #         for r in csv_reader:
-    #             new_schools.append(r[0])
+    try:
+        new_schools = []
+        """
+        CSV Preview:
+School Name,City,State,Country,Website,Program Name,Degree Level,Accreditation Dates,Accredited Campus Locations,Criteria,Date of Next Comprehensive Review,Accredited By,International Mutual Recognition Aggreement
+Abilene Christian University,Abilene,Texas,United States,http://www.acu.edu,Computer Science: Computing Theory Concentration,Bachelors,"Oct 1, 2013 – Present",Main Campus,Computer Science,2026-2027,CAC,Seoul Accord
+Abilene Christian University,Abilene,Texas,United States,http://www.acu.edu,Engineering,Bachelors,"Oct 1, 2015 – Present",Main Campus,"Engineering, General Engineering, Engineering Physics, and Engineering Science",2028-2029,EAC,Washington Accord | Bilateral Engineers Canada
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Mechatronic Engineering,Bachelors,"Oct 1, 2011 – Present",Main Campus,Mechatronics and Robotics Engineering,2025-2026,EAC,Washington Accord | Bilateral Engineers Canada
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Electrical Engineering,Bachelors,"Oct 1, 2019 – Present",Main Campus,Electrical and Electronics Engineering,2025-2026,EAC,Washington Accord | Bilateral Engineers Canada
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Mechanical Engineering,Bachelors,"Oct 1, 2018 – Present",Main Campus,Mechanical Engineering,2025-2026,EAC,Washington Accord | Bilateral Engineers Canada
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Aeronautical Engineering Technology,Associates,"Oct 1, 1947 – Present",Main Campus,Aeronautical Engineering Technology,2025-2026,ETAC,Dublin Accord
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Electronic Engineering Technology - Avionics Concentration,Bachelors,"Oct 1, 2002 – Present",Main Campus,Electrical and Electronics Engineering Technology,2025-2026,ETAC,Sydney Accord
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Electronic Engineering Technology - Avionics Concentration,Associates,"Oct 1, 2002 – Present",Main Campus,Electrical and Electronics Engineering Technology,2025-2026,ETAC,Dublin Accord
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Mechanical Engineering Technology,Bachelors,"Oct 1, 2002 – Present",Main Campus,Mechanical Engineering Technology,2025-2026,ETAC,Sydney Accord
+Vaughn College of Aeronautics and Technology,Flushing,New York,United States,www.vaughn.edu,Electronic Engineering Technology--General Electronics Option,Bachelors,"Oct 1, 2006 – Present",Main Campus,Electrical and Electronics Engineering Technology,2025-2026,ETAC,Sydney Accord
+Air Force Institute of Technology,WPAFB,Ohio,United States,www.afit.edu,Aeronautical Engineering,Masters,"Oct 1, 1986 – Present",Main Campus,Aerospace Engineering,2027-2028,EAC,
+Air Force Institute of Technology,WPAFB,Ohio,United States,www.afit.edu,Astronautical Engineering,Masters,"Oct 1, 1964 – Present",Main Campus,Aerospace Engineering,2027-2028,EAC,
         
-    #     # new_schools = [
-    #     #   # 'coastal carolina community college',
-    #     #   # 'lenoir-rhyne university',
-    #     #   # 'unity college',
-    #     #   'grand rapids community college',
-    #     #   # 'gwinnett college',
-    #     #   # 'west shore community college'
-    #     # ]
+
+Task: Generate configs using school and host from csv (use urlparse from urllib to extract host from website column)
+Will need to dedupe against existing sources in DB and repeat rows in the CSV.
+        """
+        # Read CSV of search results and extract unique school names and their hosts.
+        df = pd.read_csv('configs/search_results.csv')
+
+        # Build list of unique school names (strings) and a mapping to a host (first occurrence)
+        new_schools = []
+        school_hosts: dict[str, str] = {}
+        for _, row in df.iterrows():
+            # tolerate common header names
+            school = str(row.get('School Name') or row.get('School') or row.get('school') or "").strip()
+            website = str(row.get('Website') or row.get('website') or row.get('Website,Program Name') or "").strip()
+            if not school:
+                continue
+            if school not in new_schools:
+                new_schools.append(school)
+            # extract host from website column if present (first seen wins)
+            if website and school not in school_hosts:
+                try:
+                    parsed = urlparse(website if website.startswith(('http://', 'https://')) else 'http://' + website)
+                    host = parsed.netloc or parsed.path
+                except Exception:
+                    host = website
+                school_hosts[school] = host
+        #         new_schools.append(r[0])
+
         
-    #     source_rows = await storage.find_similar_sources(new_schools)
-    #     # for row in source_rows:
-    #     #     print(row)
-    #     filtered_schools = []
-    #     duplicates = []
-    #     for r in source_rows:
-    #         if r[1]:
-    #             duplicates.append(r[0])
-    #         else:
-    #             filtered_schools.append(r[0])
-    #     formatted_dupes = ', '.join(duplicates)
-    #     formatted_filtered = ', '.join(filtered_schools)
-    #     await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {formatted_dupes}")
-    #     await _log(Stage.CRAWL, f"Found {len(filtered_schools)} filtered schools after deduping: {formatted_filtered}")
-
-    #     ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
-
-    #     """
-    #     Will be multiple ipeds_hosts per each school, use dict of filtered_schools to keep track of if school has valid source.
-    #     If school has valid source, skip processing.
-    #     """
-
-    #     school_complete = {}
-    #     for school in filtered_schools:
-    #         school_complete[school] = False
         
-    #     task_sources = []
+        # new_schools = [
+        #   # 'coastal carolina community college',
+        #   # 'lenoir-rhyne university',
+        #   # 'unity college',
+        #   'grand rapids community college',
+        #   # 'gwinnett college',
+        #   # 'west shore community college'
+        # ]
+        
+        source_rows = await storage.find_similar_sources(new_schools)
+        # for row in source_rows:
+        #     print(row)
+        filtered_schools = []
+        duplicates = []
+        for r in source_rows:
+            if r[1]:
+                duplicates.append(r[0])
+            else:
+                filtered_schools.append(r[0])
+        formatted_dupes = ', '.join(duplicates)
+        formatted_filtered = ', '.join(filtered_schools)
+        await _log(Stage.CRAWL, f"Found {len(duplicates)} similar sources for {len(new_schools)} candidates: {formatted_dupes}")
+        await _log(Stage.CRAWL, f"Found {len(filtered_schools)} filtered schools after deduping: {formatted_filtered}")
 
-    #     attempts = defaultdict(int)
-    #     MAX_ATTEMPTS = 2
+        ipeds_rows = await storage.find_similar_ipeds(filtered_schools)
 
-    #     for school, ipeds_host in ipeds_rows:
-    #         if school_complete.get(school):
-    #             await _log(Stage.CRAWL, f"Skipping {school} as it already has a valid source")
-    #             continue
-    #         elif attempts[school] >= MAX_ATTEMPTS:
-    #             await _log(Stage.CRAWL, f'Skipping config gen for {school}, reached max attempts')
-    #             continue
+        """
+        Will be multiple ipeds_hosts per each school, use dict of filtered_schools to keep track of if school has valid source.
+        If school has valid source, skip processing.
+        """
 
-    #         pre_qs, pre_hits = await process_search(run_id, school, storage)
-    #         # if not pre_hits:
-    #         #     print(f"already processed, skipping school {school}")
-    #         #     continue
+        school_complete = {}
+        for school in filtered_schools:
+            school_complete[school] = False
+        
+        task_sources = []
 
-    #         try:
-    #             sources = await process_config(
-    #                 school=school,
-    #                 run_id=run_id,
-    #                 storage=storage,
-    #                 host=ipeds_host,
-    #                 presearch_results=pre_hits,      # <— pass URLs grouped by query
-    #                 presearch_queries=pre_qs         # <— pass queries so we can persist them
-    #             )
-    #             attempts[school] += 1
-    #             if sources:
-    #                 task_sources.extend(sources)
-    #                 school_complete[school] = True
-    #             else:
-    #                 logger.warning(f"No sources generated for {school}")
-    #                 await _log(Stage.CRAWL, f"No sources generated for {school}", None)
-    #         except Exception as e:
-    #             attempts[school] += 1
-    #             logger.error(f"Failed to process config for {school}: {e}")
-    #             await _log(Stage.CRAWL, f"Failed to process config for {school}: {e}", None)
+        attempts = defaultdict(int)
+        MAX_ATTEMPTS = 2
+
+        for school, ipeds_host in ipeds_rows:
+            if school_complete.get(school):
+                await _log(Stage.CRAWL, f"Skipping {school} as it already has a valid source")
+                continue
+            elif attempts[school] >= MAX_ATTEMPTS:
+                await _log(Stage.CRAWL, f'Skipping config gen for {school}, reached max attempts')
+                continue
+
+            pre_qs, pre_hits = await process_search(run_id, school, storage)
+            # if not pre_hits:
+            #     print(f"already processed, skipping school {school}")
+            #     continue
+
+            try:
+                sources = await process_config(
+                    school=school,
+                    run_id=run_id,
+                    storage=storage,
+                    host=ipeds_host,
+                    presearch_results=pre_hits,      # <— pass URLs grouped by query
+                    presearch_queries=pre_qs         # <— pass queries so we can persist them
+                )
+                attempts[school] += 1
+                if sources:
+                    task_sources.extend(sources)
+                    school_complete[school] = True
+                else:
+                    logger.warning(f"No sources generated for {school}")
+                    await _log(Stage.CRAWL, f"No sources generated for {school}", None)
+            except Exception as e:
+                attempts[school] += 1
+                logger.error(f"Failed to process config for {school}: {e}")
+                await _log(Stage.CRAWL, f"Failed to process config for {school}: {e}", None)
     
-    #     if not task_sources:
-    #         logger.info("No new sources to process.")
-    #         await storage.log(
-    #             run_id,
-    #             None,
-    #             Stage.CRAWL,
-    #             "No new sources to process."
-    #         )
-    # except Exception as e:
-    #     await _log(Stage.CRAWL, f"Failed to process new schools: {e}", None)
-    #     try:
-    #         await close_playwright()
-    #     finally:
-    #         await storage.end_run(run_id)
-    #     raise e
+        if not task_sources:
+            logger.info("No new sources to process.")
+            await storage.log(
+                run_id,
+                None,
+                Stage.CRAWL,
+                "No new sources to process."
+            )
+    except Exception as e:
+        await _log(Stage.CRAWL, f"Failed to process new schools: {e}", None)
+        try:
+            await close_playwright()
+        finally:
+            await storage.end_run(run_id)
+        raise e
     
-    # logger.info(f"Generated {len(task_sources)} new sources to process.")
+    logger.info(f"Generated {len(task_sources)} new sources to process.")
 
 
 
 
-    # await close_playwright()
-    # await storage.end_run(run_id)
+    await close_playwright()
+    await storage.end_run(run_id)
 
-    # return
+    return
 
 
 
